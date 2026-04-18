@@ -2,6 +2,10 @@
   "name": "loopify-monorepo",
   "license": "MIT",
   "scripts": {
+    "dev:bot": "pnpm --filter bot dev",
+    "dev:web": "pnpm --filter web dev",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
     "check": "biome check .",
     "format": "biome format --write .",
     "lint": "biome lint ."

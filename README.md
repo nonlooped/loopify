@@ -30,6 +30,8 @@ Music bots sit at the intersection of Discord’s gateway, audio pipelines, and 
 | ---- | ---- |
 | `apps/bot` | Discord bot: commands, events, interactions, gateway session |
 | `apps/web` | Web controller: React + Vite (dev server with HMR) |
+| `infra/` | Lavalink `application.yml` and related infra config (used by Docker Compose) |
+| `docker-compose.yml` | Lavalink, bot, and web stack with health-based startup order |
 
 Root tooling: [Biome](https://biomejs.dev/) for lint/format across the workspace.
 
@@ -91,6 +93,32 @@ pnpm --filter web dev
 
 The Vite dev server prints a local URL (default port **5173**). The bot logs to the terminal running `bot dev`.
 
+### Run with Docker
+
+**Requirements:** [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) (Compose v2 is included with Docker Desktop).
+
+1. Copy [`.env.example`](./.env.example) to `.env` at the **repository root** (next to `docker-compose.yml`) and fill in secrets. Compose substitutes these values into `docker-compose.yml`; required variables use `:?` and will fail fast if missing.
+
+2. Start the stack:
+
+```bash
+docker compose up --build
+```
+
+**Services and startup order:** A one-shot **BusyBox** service fixes permissions on the Lavalink plugins volume (named volumes are root-owned by default; Lavalink runs as UID 322). Then **Lavalink** becomes healthy, then the **bot** (after Discord login, it marks readiness via `/tmp/bot-ready`), then the **web** app (nginx serving the Vite production build). In Docker Desktop you may see the init container stopped after exit; that is expected.
+
+| Variable (root `.env`) | Purpose |
+| ---------------------- | ------- |
+| `LAVALINK_SERVER_PASSWORD` | Lavalink REST/WebSocket password (must match `infra/application.yml` substitution) |
+| `SERVER_ADDRESS` | Bind address inside the Lavalink container (default `0.0.0.0`) |
+| `LAVA_PUBLISH_PORT` | Host port mapped to Lavalink `2333` |
+| `DISCORD_TOKEN` | Bot token |
+| `CLIENT_ID` | Application (client) ID |
+| `GUILD_ID` | Optional in the Compose bot service: `NODE_ENV` is `production`, so commands sync **globally** unless you change that |
+| `WEB_PUBLISH_PORT` | Host port mapped to the web UI (`80` in the container) |
+
+Inside the Compose network the bot can reach Lavalink at host **`lavalink`** on port **2333**. The web UI defaults to **http://localhost:8080** (or your `WEB_PUBLISH_PORT`).
+
 ---
 
 ## Root scripts
@@ -110,6 +138,8 @@ The Vite dev server prints a local URL (default port **5173**). The bot logs to 
 **Where does music logic live?** In the bot service (and any APIs you add); the web app is the controller surface. Wire them together as you implement playback and session APIs.
 
 **Is the web app required?** No. The bot runs standalone; the web UI is optional for operator-style control.
+
+**Local dev vs Docker env files:** Local runs use `apps/bot/.env` (and whatever you configure for Vite). The Compose stack reads a **root** `.env` for substitution and passes variables into containers—keep those separate so you do not confuse guild dev settings with production-like Compose settings.
 
 ---
 
