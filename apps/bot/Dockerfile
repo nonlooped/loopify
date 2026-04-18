@@ -15,4 +15,4 @@ COPY apps/bot ./apps/bot
 WORKDIR /app/apps/bot
 
 # Uses tsx (matches package.json start) so a strict tsc build is not required for the image.
-CMD ["node", "--import", "tsx", "src/index.ts"]
+CMD ["pnpm", "dev"]
