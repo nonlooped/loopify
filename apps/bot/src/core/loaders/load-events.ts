@@ -1,11 +1,12 @@
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { logScope } from '../../lib/logger.js'
 import type { BotClient } from '../../types/commands.js'
 
-export async function loadEvents(client: BotClient, runtimeDir: string) {
-  const eventsDir = path.join(runtimeDir, '..', '..', 'events')
+export async function loadEvents(client: BotClient) {
+  const loadersDir = path.dirname(fileURLToPath(import.meta.url))
+  const eventsDir = path.join(loadersDir, '..', '..', 'events')
   const entries = await readdir(eventsDir, { withFileTypes: true })
   let loadedEvents = 0
 

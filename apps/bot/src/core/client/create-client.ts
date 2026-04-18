@@ -1,7 +1,7 @@
 import { Client, Collection, GatewayIntentBits } from 'discord.js'
-import type { BotClient, CommandModule } from '../../types/commands.js'
 import { LavalinkManager } from 'lavalink-client'
 import { assertRequiredEnv } from '../../config/env.js'
+import type { BotClient, CommandModule } from '../../types/commands.js'
 
 export function createClient() {
   const client: BotClient = new Client({

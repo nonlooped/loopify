@@ -9,7 +9,20 @@ import type { BotClient } from '../types/commands.js'
 // Per kind: exact customId -> flex routes (RegExp / parseCustomId / matchCustomId)
 // sorted by interactionRoutePriority (higher first), then file load order.
 
-function resolveComponentRoute(kindState, customId) {
+type FlexRoute = {
+  priority: number
+  order: number
+  tryResolve: (
+    customId: string,
+  ) => { execute: (...args: unknown[]) => unknown; args: unknown[] } | null
+}
+
+type KindState = {
+  exact: Map<string, (...args: unknown[]) => unknown>
+  flexRoutes: FlexRoute[]
+}
+
+function resolveComponentRoute(kindState: KindState, customId: string) {
   const { exact, flexRoutes } = kindState
   const direct = exact.get(customId)
   if (direct) {
@@ -26,9 +39,13 @@ function resolveComponentRoute(kindState, customId) {
   return null
 }
 
-async function loadInteractionKind(interactionsDir, subdir, ext) {
-  const exact = new Map()
-  const flexRoutes = []
+async function loadInteractionKind(
+  interactionsDir: string,
+  subdir: string,
+  ext: string,
+): Promise<KindState> {
+  const exact = new Map<string, (...args: unknown[]) => unknown>()
+  const flexRoutes: FlexRoute[] = []
   let flexSequence = 0
   const dir = path.join(interactionsDir, subdir)
 

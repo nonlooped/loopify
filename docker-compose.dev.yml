@@ -1,0 +1,46 @@
+# Development stack: bind-mount sources so tsx --watch and Vite HMR pick up edits.
+# Requires GUILD_ID (guild-scoped slash command sync; fast iteration vs global sync).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Web UI: http://localhost:5173 (Vite) by default (override with WEB_DEV_PUBLISH_PORT).
+# The base file also publishes ${WEB_PUBLISH_PORT:-8080}:80; nothing listens on :80 in
+# this image — ignore that mapping or set WEB_PUBLISH_PORT to a free host port.
+
+include:
+  - docker-compose.yml
+
+services:
+  bot:
+    environment:
+      NODE_ENV: development
+      GUILD_ID: ${GUILD_ID:?Set GUILD_ID in .env for Docker dev (guild command sync)}
+    volumes:
+      - ./apps/bot/src:/app/apps/bot/src
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.dev
+    ports:
+      - "${WEB_DEV_PUBLISH_PORT:-5173}:5173"
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/public:/app/apps/web/public
+      - ./apps/web/index.html:/app/apps/web/index.html
+      - ./apps/web/vite.config.ts:/app/apps/web/vite.config.ts
+      - ./apps/web/tsconfig.json:/app/apps/web/tsconfig.json
+      - ./apps/web/tsconfig.app.json:/app/apps/web/tsconfig.app.json
+      - ./apps/web/tsconfig.node.json:/app/apps/web/tsconfig.node.json
+    environment:
+      NODE_ENV: development
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(\"http://127.0.0.1:5173/\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

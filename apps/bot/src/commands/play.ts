@@ -1,9 +1,14 @@
+import { SlashCommandBuilder } from 'discord.js'
+
+import { AppEmojis } from '../lib/app-emojis.js'
+import { editReplyV2Error, replyMusicSuccess } from '../music/reply.js'
 import {
-  GuildMember,
-  PermissionFlagsBits,
-  SlashCommandBuilder,
-} from 'discord.js'
-import type { SearchQuery } from 'lavalink-client'
+  buildSearchQuery,
+  ensureGuildVoice,
+  ensureLavalink,
+  getOrCreatePlayer,
+  resolveGuildTextChannel,
+} from '../services/music-player.js'
 import type { BotClient } from '../types/commands.js'
 
 export const data = new SlashCommandBuilder()
@@ -16,63 +21,17 @@ export const data = new SlashCommandBuilder()
       .setRequired(true),
   )
 
-function buildSearchQuery(raw: string): SearchQuery {
-  const trimmed = raw.trim()
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed
-  }
-  return { query: trimmed, source: 'ytsearch' }
-}
-
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
   const client = interaction.client as BotClient
 
-  if (!interaction.inGuild() || !interaction.guildId) {
-    await interaction.reply({
-      content: 'This command can only be used in a server.',
-      ephemeral: true,
-    })
+  const voice = await ensureGuildVoice(interaction)
+  if (!voice.ok) {
     return
   }
 
-  const member = interaction.member
-  if (!(member instanceof GuildMember)) {
-    await interaction.reply({
-      content: 'Could not resolve your voice state.',
-      ephemeral: true,
-    })
-    return
-  }
-
-  const voiceChannel = member.voice.channel
-  if (!voiceChannel) {
-    await interaction.reply({
-      content: 'Join a voice channel first.',
-      ephemeral: true,
-    })
-    return
-  }
-
-  const me = voiceChannel.guild.members.me
-  const canSpeak = voiceChannel
-    .permissionsFor(me ?? voiceChannel.client.user)
-    ?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])
-
-  if (!canSpeak) {
-    await interaction.reply({
-      content: 'I need permission to connect and speak in that voice channel.',
-      ephemeral: true,
-    })
-    return
-  }
-
-  if (!client.lavalink.useable) {
-    await interaction.reply({
-      content: 'The music service is not connected yet. Try again shortly.',
-      ephemeral: true,
-    })
+  if (!(await ensureLavalink(interaction, client))) {
     return
   }
 
@@ -81,18 +40,12 @@ export async function execute(
 
   await interaction.deferReply()
 
-  let player = client.lavalink.getPlayer(interaction.guildId)
-  if (!player) {
-    player = client.lavalink.createPlayer({
-      guildId: interaction.guildId,
-      voiceChannelId: voiceChannel.id,
-      textChannelId: interaction.channelId,
-      selfDeaf: true,
-    })
-    await player.connect()
-  } else if (player.voiceChannelId !== voiceChannel.id) {
-    await player.changeVoiceState({ voiceChannelId: voiceChannel.id })
-  }
+  const player = await getOrCreatePlayer(
+    client,
+    voice.guildId,
+    voice.voiceChannel,
+    resolveGuildTextChannel(interaction),
+  )
 
   try {
     const result = await player.search(searchQuery, interaction.user)
@@ -100,13 +53,13 @@ export async function execute(
     if (result.loadType === 'empty' || result.loadType === 'error') {
       const detail =
         result.exception?.message ?? 'Nothing matched that request.'
-      await interaction.editReply(detail)
+      await editReplyV2Error(interaction, detail)
       return
     }
 
     const tracks = result.tracks
     if (!tracks.length) {
-      await interaction.editReply('No playable tracks were returned.')
+      await editReplyV2Error(interaction, 'No playable tracks were returned.')
       return
     }
 
@@ -125,15 +78,21 @@ export async function execute(
     const title = first.info.title ?? 'Unknown track'
 
     if (result.loadType === 'playlist' && result.playlist?.name) {
-      await interaction.editReply(
-        `Queued **${result.playlist.name}** (${tracks.length} tracks).`,
-      )
+      await replyMusicSuccess(interaction, {
+        emoji: AppEmojis.play,
+        title: 'Playlist Queued',
+        description: `${result.playlist.name} (${tracks.length} tracks).`,
+      })
       return
     }
 
-    await interaction.editReply(`Queued **${title}**.`)
+    await replyMusicSuccess(interaction, {
+      emoji: AppEmojis.play,
+      title: 'Added to Queue',
+      description: title,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    await interaction.editReply(`Could not play that: ${message}`)
+    await editReplyV2Error(interaction, `Could not play that: ${message}`)
   }
 }

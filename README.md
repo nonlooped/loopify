@@ -119,6 +119,22 @@ docker compose up --build
 
 Inside the Compose network the bot can reach Lavalink at host **`lavalink`** on port **2333**. The web UI defaults to **http://localhost:8080** (or your `WEB_PUBLISH_PORT`).
 
+#### Docker with file watching (bot + web)
+
+The default Compose stack bakes the web app into nginx and copies the bot into the image at **build** time, so edits on your machine do not show up until you rebuild. For local development, use the override file that bind-mounts `apps/bot/src` and `apps/web` sources and runs **tsx --watch** plus the **Vite** dev server:
+
+1. Set **`GUILD_ID`** in the root `.env` (required for this override: the bot runs with `NODE_ENV=development` and syncs slash commands to that guild).
+
+2. Start the stack:
+
+```bash
+pnpm run docker:dev
+```
+
+Images are built **one service at a time** (`bot`, then `web`) to avoid BuildKit export races that can surface on Docker Desktop/WSL2 as `parent snapshot ... does not exist`. If a build still fails that way, run **`pnpm run docker:prune`** (clears the build cache) and retry, or restart Docker.
+
+Open the controller at **http://localhost:5173** (or **`WEB_DEV_PUBLISH_PORT`**). The merged Compose file still publishes **`${WEB_PUBLISH_PORT:-8080}:80`** from the base `web` service; the Vite image does not listen on port 80, so that mapping is inert—use the **5173** mapping only.
+
 ---
 
 ## Root scripts
@@ -128,6 +144,8 @@ Inside the Compose network the bot can reach Lavalink at host **`lavalink`** on 
 | `pnpm run check` | Biome check (format + lint) |
 | `pnpm run format` | Biome format with write |
 | `pnpm run lint` | Biome lint |
+| `pnpm run docker:dev` | Compose with dev overrides (bind mounts + Vite HMR) |
+| `pnpm run docker:prune` | `docker builder prune -af` — fix stuck BuildKit cache |
 
 ---
 

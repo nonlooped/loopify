@@ -1,5 +1,3 @@
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 import { assertRequiredEnv } from '../../config/env.js'
 import { registerInteractionHandlers } from '../../interactions/router.js'
@@ -13,12 +11,10 @@ config()
 
 export async function startBot() {
   const client = createClient()
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
 
-  await loadCommands(client, __dirname)
+  await loadCommands(client)
   await syncCommands(client)
-  await loadEvents(client, __dirname)
+  await loadEvents(client)
   await registerInteractionHandlers(client)
 
   logScope('runtime', 'Starting Discord client')
