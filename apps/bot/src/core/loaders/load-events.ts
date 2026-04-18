@@ -16,7 +16,7 @@ export async function loadEvents(client: BotClient, runtimeDir: string) {
 
     const modulePath = pathToFileURL(path.join(eventsDir, entry.name)).href
     const eventModule = await import(modulePath)
-    const handler = (...args: unknown[]) => eventModule.execute(...args)
+    const handler = (...args: unknown[]) => eventModule.execute(client, ...args)
     if (eventModule.once) {
       client.once(eventModule.name, handler)
     } else {

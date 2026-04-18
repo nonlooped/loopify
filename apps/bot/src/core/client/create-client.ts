@@ -27,9 +27,5 @@ export function createClient() {
     },
   })
 
-  client.on('raw', (data) => {
-    client.lavalink.sendRawData(data)
-  })
-
   return client
 }

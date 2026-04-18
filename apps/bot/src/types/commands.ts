@@ -8,7 +8,7 @@ import type {
   UserContextMenuCommandInteraction,
 } from 'discord.js'
 
-import {LavalinkManager} from 'lavalink-client';
+import type { LavalinkManager } from 'lavalink-client'
 
 export type AnyExecutableCommandInteraction =
   | ChatInputCommandInteraction
@@ -26,5 +26,5 @@ export interface CommandModule {
 
 export type BotClient = import('discord.js').Client & {
   commands: Collection<string, CommandModule>
-  lavalink: LavalinkManager;
+  lavalink: LavalinkManager
 }

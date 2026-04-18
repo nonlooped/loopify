@@ -62,8 +62,7 @@ export async function execute(
 
   if (!canSpeak) {
     await interaction.reply({
-      content:
-        'I need permission to connect and speak in that voice channel.',
+      content: 'I need permission to connect and speak in that voice channel.',
       ephemeral: true,
     })
     return
