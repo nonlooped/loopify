@@ -1,3 +1,4 @@
+import type { CommandCategory, CommandInfo } from '@loopify/protocol'
 import type {
   AutocompleteInteraction,
   ChatInputCommandInteraction,
@@ -8,12 +9,15 @@ import type {
   UserContextMenuCommandInteraction,
 } from 'discord.js'
 
-import type { LavalinkManager } from 'lavalink-client'
-
 export type AnyExecutableCommandInteraction =
   | ChatInputCommandInteraction
   | UserContextMenuCommandInteraction
   | MessageContextMenuCommandInteraction
+
+export interface CommandMeta {
+  category: CommandCategory
+  examples?: string[]
+}
 
 export interface CommandModule {
   data: SlashCommandBuilder | ContextMenuCommandBuilder
@@ -22,9 +26,11 @@ export interface CommandModule {
   ) => Promise<void> | void
   /** Optional: slash commands with `.setAutocomplete(true)` options. */
   autocomplete?: (interaction: AutocompleteInteraction) => Promise<void> | void
+  /** Optional: static metadata for public docs surfaces (e.g. web /commands). */
+  meta?: CommandMeta
 }
 
 export type BotClient = import('discord.js').Client & {
   commands: Collection<string, CommandModule>
-  lavalink: LavalinkManager
+  commandsManifest?: CommandInfo[]
 }

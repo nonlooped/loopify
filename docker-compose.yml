@@ -1,47 +1,51 @@
 name: loopify
 
 services:
-  # Named volumes are root-owned by default; Lavalink runs as UID 322 and must write plugin JARs here.
-  lavalink-plugins-init:
-    image: busybox:1.36
-    restart: "no"
-    user: "0:0"
-    command:
-      [
-        "sh",
-        "-c",
-        "mkdir -p /opt/Lavalink/plugins && chown -R 322:322 /opt/Lavalink/plugins",
-      ]
-    volumes:
-      - lavalink-plugins:/opt/Lavalink/plugins
-
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4-alpine
     restart: unless-stopped
-    depends_on:
-      lavalink-plugins-init:
-        condition: service_completed_successfully
     volumes:
       - ./infra/application.yml:/opt/Lavalink/application.yml:ro
-      - lavalink-plugins:/opt/Lavalink/plugins
     environment:
-      SERVER_PORT: "2333"
-      SERVER_ADDRESS: ${SERVER_ADDRESS:-0.0.0.0}
       LAVALINK_SERVER_PASSWORD: ${LAVALINK_SERVER_PASSWORD:?Set LAVALINK_SERVER_PASSWORD in .env}
-    ports:
-      - "${LAVA_PUBLISH_PORT:-2333}:2333"
-    networks:
-      - loopify
     healthcheck:
       test:
         [
           "CMD-SHELL",
           'wget -qO- --header="Authorization: $$LAVALINK_SERVER_PASSWORD" http://127.0.0.1:2333/v4/info >/dev/null || exit 1',
         ]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 6
-      start_period: 90s
+      retries: 30
+      start_period: 30s
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "4000"
+      CLIENT_ID: ${CLIENT_ID:?Set CLIENT_ID in .env}
+      LAVALINK_HOST: lavalink
+      LAVALINK_PORT: "2333"
+      LAVALINK_SERVER_PASSWORD: ${LAVALINK_SERVER_PASSWORD:?Set LAVALINK_SERVER_PASSWORD in .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN in .env}
+    depends_on:
+      lavalink:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   bot:
     build:
@@ -50,52 +54,32 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DISCORD_TOKEN: ${DISCORD_TOKEN:?Set DISCORD_TOKEN in a project .env file}
-      CLIENT_ID: ${CLIENT_ID:?Set CLIENT_ID in a project .env file}
-      # Only used when NODE_ENV is not production (guild command sync).
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?Set DISCORD_TOKEN in .env}
+      CLIENT_ID: ${CLIENT_ID:?Set CLIENT_ID in .env}
       GUILD_ID: ${GUILD_ID:-}
-      # For future Lavalink client wiring (same password as Lavalink)
-      LAVALINK_HOST: lavalink
-      LAVALINK_PORT: "2333"
-      LAVALINK_SERVER_PASSWORD: ${LAVALINK_SERVER_PASSWORD:?Set LAVALINK_SERVER_PASSWORD in .env}
+      MUSIC_SERVER_URL: http://server:4000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN in .env}
     depends_on:
-      lavalink:
+      server:
         condition: service_healthy
-    networks:
-      - loopify
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/bot-ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 8
-      start_period: 60s
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      MUSIC_SERVER_URL: http://server:4000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN in .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL in .env}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:?Set DISCORD_CLIENT_ID in .env}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:?Set DISCORD_CLIENT_SECRET in .env}
+      DISCORD_OAUTH_REDIRECT_URI: ${DISCORD_OAUTH_REDIRECT_URI:?Set DISCORD_OAUTH_REDIRECT_URI in .env}
+      WEB_SESSION_SECRET: ${WEB_SESSION_SECRET:?Set WEB_SESSION_SECRET in .env}
     ports:
-      - "${WEB_PUBLISH_PORT:-8080}:80"
+      - "8080:8080"
     depends_on:
-      bot:
+      server:
         condition: service_healthy
-    networks:
-      - loopify
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -qO- http://127.0.0.1/ >/dev/null || exit 1",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
-networks:
-  loopify:
-    driver: bridge
-
-volumes:
-  lavalink-plugins:

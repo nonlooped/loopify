@@ -7,11 +7,17 @@ import {
 } from '../../lib/components-v2.js'
 import { buildNowPlayingPayload } from '../../music/payloads.js'
 import {
-  getPlayer,
+  getPlayerSnapshot,
+  postLoop,
+  postPause,
+  postResume,
+  postSkip,
+  postStop,
+} from '../../server-link/api.js'
+import {
   replyMusicError,
-  requireSameVoice,
+  requireSameVoiceForButton,
 } from '../../services/music-player.js'
-import type { BotClient } from '../../types/commands.js'
 
 const PREFIX = 'music:np:'
 
@@ -40,36 +46,35 @@ export async function execute(
   interaction: ButtonInteraction,
   parsed: { action: string; guildId: string },
 ) {
-  const client = interaction.client as BotClient
   if (!interaction.inGuild() || interaction.guildId !== parsed.guildId) {
     await replyMusicError(interaction, 'This control is not valid here.', true)
     return
   }
 
-  const player = getPlayer(client, parsed.guildId)
-  if (!player) {
+  const snapshot = await getPlayerSnapshot(parsed.guildId)
+  if (!snapshot) {
     await replyMusicError(interaction, 'No active music session.', true)
     return
   }
 
-  if (!(await requireSameVoice(interaction, player))) {
+  if (!(await requireSameVoiceForButton(interaction, snapshot))) {
     return
   }
 
   await interaction.deferUpdate()
 
   switch (parsed.action) {
-    case 'pause':
-      if (player.paused) {
-        await player.resume()
+    case 'pause': {
+      if (snapshot.paused) {
+        await postResume(parsed.guildId)
       } else {
-        await player.pause()
+        await postPause(parsed.guildId, { paused: true })
       }
       break
-    case 'skip':
-      try {
-        await player.skip()
-      } catch {
+    }
+    case 'skip': {
+      const r = await postSkip(parsed.guildId)
+      if (!r.ok) {
         await interaction.followUp({
           content: 'Nothing to skip.',
           ephemeral: true,
@@ -77,13 +82,14 @@ export async function execute(
         return
       }
       break
+    }
     case 'loop': {
-      const next = player.repeatMode === 'track' ? 'off' : 'track'
-      await player.setRepeatMode(next)
+      const next = snapshot.repeatMode === 'track' ? 'off' : 'track'
+      await postLoop(parsed.guildId, next)
       break
     }
     case 'stop':
-      await player.destroy()
+      await postStop(parsed.guildId)
       if (interaction.message.editable) {
         await interaction.message.edit({
           ...v2MessageOptions(
@@ -108,7 +114,7 @@ export async function execute(
   if (!interaction.guild || !interaction.message.editable) {
     return
   }
-  const remaining = getPlayer(client, parsed.guildId)
+  const remaining = await getPlayerSnapshot(parsed.guildId)
   if (!remaining) {
     return
   }

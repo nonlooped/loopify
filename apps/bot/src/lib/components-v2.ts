@@ -11,11 +11,23 @@ import {
 
 import { type AppEmojiMarkup, parseEmojiMarkup } from './app-emojis.js'
 
-/** Default “status card” accent (green bar). */
-export const AccentStatus = 0x3eff7a
+/**
+ * Loopify accent — electric lilac, oklch(70% 0.25 305) approximated for
+ * Discord's sRGB sidebar. One brand color across every surface so the bot's
+ * messages read as a single object rather than a rainbow of severity colors.
+ */
+export const AccentBrand = 0xc77bff
 
-/** Rich cards (e.g. now playing). */
-export const AccentRich = 0xb36bff
+/** Default status card accent. Aliased to the brand so confirmations,
+ *  acknowledgements, and rich now-playing cards all match. */
+export const AccentStatus = AccentBrand
+
+/** Rich cards (e.g. now playing). Same brand color, named for legibility. */
+export const AccentRich = AccentBrand
+
+/** Error accent — Discord red is preserved for semantic clarity. Errors are
+ *  the only place we deliberately depart from the brand color. */
+export const AccentError = 0xed4245
 
 export type ProgressSegmentTheme = {
   empty: { left: string; middle: string; right: string }
@@ -77,7 +89,7 @@ export function createStatusContainer(options: {
 
 export function createErrorContainer(description: string): ContainerBuilder {
   return new ContainerBuilder()
-    .setAccentColor(0xed4245)
+    .setAccentColor(AccentError)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `### Something went wrong\n-# ${description}`,

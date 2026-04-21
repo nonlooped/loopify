@@ -1,0 +1,28 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@hono/node-ws": "^1.2.0",
+    "@loopify/protocol": "workspace:*",
+    "hono": "^4.11.3",
+    "lavalink-client": "^2.10.1",
+    "pino": "^10.1.0",
+    "tsx": "^4.20.6",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.9.3"
+  }
+}

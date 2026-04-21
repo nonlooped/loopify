@@ -1,16 +1,9 @@
-import type {
-  ChannelDeletePacket,
-  VoicePacket,
-  VoiceServer,
-  VoiceState,
-} from 'lavalink-client'
+import { getMusicServerConnection } from '../server-link/connection.js'
 import type { BotClient } from '../types/commands.js'
-
-type RawVoiceData = VoicePacket | VoiceServer | VoiceState | ChannelDeletePacket
 
 export const name = 'raw'
 export const once = false
 
-export async function execute(client: BotClient, data: unknown) {
-  await client.lavalink.sendRawData(data as RawVoiceData)
+export async function execute(_client: BotClient, data: unknown) {
+  getMusicServerConnection()?.sendRawGateway(data)
 }

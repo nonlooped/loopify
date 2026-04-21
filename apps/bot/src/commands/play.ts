@@ -1,15 +1,14 @@
+import type { PlayerSnapshot } from '@loopify/protocol'
 import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { editReplyV2Error, replyMusicSuccess } from '../music/reply.js'
+import { postPlay } from '../server-link/api.js'
 import {
-  buildSearchQuery,
   ensureGuildVoice,
-  ensureLavalink,
-  getOrCreatePlayer,
+  ensureMusicServer,
   resolveGuildTextChannel,
 } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
 
 export const data = new SlashCommandBuilder()
   .setName('play')
@@ -21,71 +20,54 @@ export const data = new SlashCommandBuilder()
       .setRequired(true),
   )
 
+export const meta = {
+  category: 'playback',
+  examples: [
+    '/play query: never gonna give you up',
+    '/play query: https://youtu.be/dQw4w9WgXcQ',
+  ],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-
   const voice = await ensureGuildVoice(interaction)
   if (!voice.ok) {
     return
   }
 
-  if (!(await ensureLavalink(interaction, client))) {
+  if (!(await ensureMusicServer(interaction))) {
     return
   }
 
   const queryRaw = interaction.options.getString('query', true)
-  const searchQuery = buildSearchQuery(queryRaw)
 
   await interaction.deferReply()
 
-  const player = await getOrCreatePlayer(
-    client,
-    voice.guildId,
-    voice.voiceChannel,
-    resolveGuildTextChannel(interaction),
-  )
+  const textCh = resolveGuildTextChannel(interaction)
 
   try {
-    const result = await player.search(searchQuery, interaction.user)
-
-    if (result.loadType === 'empty' || result.loadType === 'error') {
-      const detail =
-        result.exception?.message ?? 'Nothing matched that request.'
-      await editReplyV2Error(interaction, detail)
+    const r = await postPlay(voice.guildId, {
+      query: queryRaw.trim(),
+      voiceChannelId: voice.voiceChannel.id,
+      textChannelId: textCh?.id,
+      requesterId: interaction.user.id,
+    })
+    if (!r.ok) {
+      let msg = r.statusText
+      try {
+        const errBody = (await r.json()) as { error?: string }
+        if (errBody.error) {
+          msg = errBody.error
+        }
+      } catch {
+        /* use statusText */
+      }
+      await editReplyV2Error(interaction, msg)
       return
     }
-
-    const tracks = result.tracks
-    if (!tracks.length) {
-      await editReplyV2Error(interaction, 'No playable tracks were returned.')
-      return
-    }
-
-    const wasActive = player.playing || player.paused
-    if (result.loadType === 'playlist') {
-      await player.queue.add(tracks)
-    } else {
-      await player.queue.add(tracks[0])
-    }
-
-    if (!wasActive) {
-      await player.play()
-    }
-
-    const first = tracks[0]
-    const title = first.info.title ?? 'Unknown track'
-
-    if (result.loadType === 'playlist' && result.playlist?.name) {
-      await replyMusicSuccess(interaction, {
-        emoji: AppEmojis.play,
-        title: 'Playlist Queued',
-        description: `${result.playlist.name} (${tracks.length} tracks).`,
-      })
-      return
-    }
-
+    const j = (await r.json()) as { player: PlayerSnapshot }
+    const title = j.player.current?.info.title ?? 'Unknown track'
     await replyMusicSuccess(interaction, {
       emoji: AppEmojis.play,
       title: 'Added to Queue',

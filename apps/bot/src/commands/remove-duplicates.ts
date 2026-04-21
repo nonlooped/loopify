@@ -2,26 +2,30 @@ import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
-import { getReadyPlayer, trackDedupeKey } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
+import { deleteQueueIndex } from '../server-link/api.js'
+import { getReadySnapshot, trackDedupeKey } from '../services/music-player.js'
 
 export const data = new SlashCommandBuilder()
   .setName('remove-duplicates')
   .setDescription('Remove duplicate songs from the queue')
 
+export const meta = {
+  category: 'queue',
+  examples: ['/remove-duplicates'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-  const ctx = await getReadyPlayer(interaction, client)
+  const ctx = await getReadySnapshot(interaction)
   if (!ctx.ok) {
     return
   }
-  const { queue } = ctx.player
   const seen = new Set<string>()
   const duplicateIndexes: number[] = []
-  for (let i = 0; i < queue.tracks.length; i++) {
-    const key = trackDedupeKey(queue.tracks[i])
+  const { queue } = ctx.snapshot
+  for (let i = 0; i < queue.length; i++) {
+    const key = trackDedupeKey(queue[i])
     if (seen.has(key)) {
       duplicateIndexes.push(i)
     } else {
@@ -29,7 +33,7 @@ export async function execute(
     }
   }
   for (const idx of duplicateIndexes.sort((a, b) => b - a)) {
-    await queue.remove(idx)
+    await deleteQueueIndex(ctx.guildId, idx)
   }
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.reload,

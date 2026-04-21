@@ -1,15 +1,14 @@
 import { MessageFlags, type StringSelectMenuInteraction } from 'discord.js'
-import type { Track } from 'lavalink-client'
+
 import { AppEmojis } from '../../lib/app-emojis.js'
 import { createStatusContainer } from '../../lib/components-v2.js'
 import { consumeInteractionSession } from '../../lib/interaction-sessions.js'
+import { postJoin, postQueueAdd } from '../../server-link/api.js'
 import {
-  ensureLavalink,
-  getOrCreatePlayer,
+  ensureMusicServer,
   replyMusicError,
   resolveGuildTextChannel,
 } from '../../services/music-player.js'
-import type { BotClient } from '../../types/commands.js'
 
 const PREFIX = 'music:search:'
 
@@ -29,14 +28,17 @@ export function parseCustomId(id: string): { token: string } | null {
 type SessionPayload = {
   guildId: string
   userId: string
-  tracks: Pick<Track, 'encoded' | 'info' | 'pluginInfo'>[]
+  tracks: Array<{
+    encoded: string
+    info: { title?: string; author?: string }
+    pluginInfo: Record<string, unknown>
+  }>
 }
 
 export async function execute(
   interaction: StringSelectMenuInteraction,
   parsed: { token: string },
 ) {
-  const client = interaction.client as BotClient
   if (!interaction.inGuild() || !interaction.guildId) {
     await replyMusicError(
       interaction,
@@ -60,7 +62,7 @@ export async function execute(
     return
   }
 
-  if (!(await ensureLavalink(interaction, client))) {
+  if (!(await ensureMusicServer(interaction))) {
     return
   }
 
@@ -88,26 +90,23 @@ export async function execute(
     return
   }
 
-  const player = await getOrCreatePlayer(
-    client,
-    interaction.guildId,
-    voiceChannel,
-    resolveGuildTextChannel(interaction),
-  )
+  const textCh = resolveGuildTextChannel(interaction)
+  const joinR = await postJoin(interaction.guildId, {
+    voiceChannelId: voiceChannel.id,
+    textChannelId: textCh?.id,
+  })
+  if (!joinR.ok) {
+    await replyMusicError(interaction, await joinR.text(), true)
+    return
+  }
 
-  const track = client.lavalink.utils.buildTrack(
-    {
-      encoded: entry.encoded,
-      info: entry.info,
-      pluginInfo: entry.pluginInfo,
-    },
-    interaction.user,
-  )
-
-  const wasActive = player.playing || player.paused
-  await player.queue.add(track)
-  if (!wasActive) {
-    await player.play()
+  const addR = await postQueueAdd(interaction.guildId, {
+    encoded: entry.encoded,
+    requesterId: interaction.user.id,
+  })
+  if (!addR.ok) {
+    await replyMusicError(interaction, await addR.text(), true)
+    return
   }
 
   const container = createStatusContainer({

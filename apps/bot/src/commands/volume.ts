@@ -2,8 +2,8 @@ import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
-import { getReadyPlayer } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
+import { postVolume } from '../server-link/api.js'
+import { getReadySnapshot } from '../services/music-player.js'
 
 export const data = new SlashCommandBuilder()
   .setName('volume')
@@ -17,16 +17,20 @@ export const data = new SlashCommandBuilder()
       .setMaxValue(100),
   )
 
+export const meta = {
+  category: 'playback',
+  examples: ['/volume percent: 50'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-  const ctx = await getReadyPlayer(interaction, client)
+  const ctx = await getReadySnapshot(interaction)
   if (!ctx.ok) {
     return
   }
   const pct = interaction.options.getInteger('percent', true)
-  await ctx.player.setVolume(pct * 10)
+  await postVolume(ctx.guildId, pct * 10)
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.play,
     title: 'Volume Updated',

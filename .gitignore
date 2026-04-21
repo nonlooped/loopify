@@ -44,6 +44,8 @@ Thumbs.db
 
 # Editors and IDEs
 .vscode/*
+.cursor
+.codex
 !.vscode/extensions.json
 .idea/
 *.suo

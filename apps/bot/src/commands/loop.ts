@@ -2,23 +2,27 @@ import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
-import { getReadyPlayer } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
+import { postLoop } from '../server-link/api.js'
+import { getReadySnapshot } from '../services/music-player.js'
 
 export const data = new SlashCommandBuilder()
   .setName('loop')
   .setDescription('Loop the current song')
 
+export const meta = {
+  category: 'queue',
+  examples: ['/loop'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-  const ctx = await getReadyPlayer(interaction, client)
+  const ctx = await getReadySnapshot(interaction)
   if (!ctx.ok) {
     return
   }
-  const next = ctx.player.repeatMode === 'track' ? 'off' : 'track'
-  await ctx.player.setRepeatMode(next)
+  const next = ctx.snapshot.repeatMode === 'track' ? 'off' : 'track'
+  await postLoop(ctx.guildId, next)
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.reload,
     title: next === 'track' ? 'Loop Track On' : 'Loop Track Off',

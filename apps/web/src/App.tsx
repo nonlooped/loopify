@@ -1,130 +1,139 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect, useState } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom"
 
-function App() {
-  const [count, setCount] = useState(0)
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/auth"
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+import { ThemeToggle } from "./components/theme-toggle.js"
+import { Wordmark } from "./components/wordmark.js"
+import { CommandsPage } from "./pages/CommandsPage.js"
+import { ControllerPage } from "./pages/ControllerPage.js"
+import { HomePage } from "./pages/HomePage.js"
+import { LoginPage } from "./pages/LoginPage.js"
 
-      <div className="ticks"></div>
+type ThemeMode = "light" | "dark"
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank" rel="noopener">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank" rel="noopener">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a
-                href="https://github.com/vitejs/vite"
-                target="_blank"
-                rel="noopener"
-              >
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank" rel="noopener">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank" rel="noopener">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a
-                href="https://bsky.app/profile/vite.dev"
-                target="_blank"
-                rel="noopener"
-              >
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+const THEME_KEY = "loopify-theme"
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function getInitialTheme(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "dark"
+  }
+
+  const stored = window.localStorage.getItem(THEME_KEY)
+  if (stored === "light" || stored === "dark") {
+    return stored
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light"
 }
 
-export default App
+export default function App() {
+  const location = useLocation()
+  const reduceMotion = useReducedMotion()
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme)
+  const auth = useAuth()
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle("dark", theme === "dark")
+    root.style.colorScheme = theme
+    window.localStorage.setItem(THEME_KEY, theme)
+  }, [theme])
+
+  return (
+    <div className="relative min-h-svh overflow-x-hidden bg-background text-foreground">
+      <div className="page-grid relative flex min-h-svh flex-col">
+        <header className="border-b border-border">
+          <div className="flex h-14 items-center justify-between gap-4 sm:h-16">
+            <NavLink
+              to="/"
+              aria-label="Loopify home"
+              className="flex min-w-0 shrink items-center text-foreground transition-opacity hover:opacity-80"
+            >
+              <Wordmark size="md" />
+            </NavLink>
+
+            <nav
+              aria-label="Primary"
+              className="flex flex-1 items-center gap-4 sm:gap-8"
+            >
+              {[
+                { to: "/", label: "Home" },
+                { to: "/controller", label: "Room" },
+                { to: "/commands", label: "Commands" },
+              ].map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    cn(
+                      "text-sm font-medium transition-colors",
+                      isActive
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <ThemeToggle
+                theme={theme}
+                onToggle={() =>
+                  setTheme((current) => (current === "dark" ? "light" : "dark"))
+                }
+              />
+              {!auth.isLoading ? (
+                auth.isSignedIn ? (
+                  <Button asChild size="sm" variant="ghost">
+                    <a href="/auth/logout">Sign out</a>
+                  </Button>
+                ) : (
+                  <Button asChild size="sm" variant="outline">
+                    <NavLink to="/login">Sign in</NavLink>
+                  </Button>
+                )
+              ) : null}
+            </div>
+          </div>
+        </header>
+
+        <AnimatePresence mode="wait">
+          <motion.main
+            key={location.pathname + location.search}
+            className="flex-1 py-10 sm:py-12"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={reduceMotion ? undefined : { opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <Routes location={location}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/controller" element={<ControllerPage />} />
+              <Route path="/commands" element={<CommandsPage />} />
+              <Route path="/commands/:name" element={<CommandsPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </motion.main>
+        </AnimatePresence>
+
+        <footer className="mt-auto border-t border-border py-6">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:justify-start">
+            <Wordmark size="sm" accent className="text-foreground" />
+            <span aria-hidden="true" className="hidden h-3 w-px bg-border sm:inline-block" />
+            <span>Music, together.</span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  )
+}

@@ -13,14 +13,11 @@ import { AppEmojis } from '../lib/app-emojis.js'
 import { AccentStatus, v2MessageOptions } from '../lib/components-v2.js'
 import { createInteractionSession } from '../lib/interaction-sessions.js'
 import { editReplyV2Error } from '../music/reply.js'
+import { getSearch } from '../server-link/api.js'
 import {
-  buildSearchQuery,
   ensureGuildVoice,
-  ensureLavalink,
-  getOrCreatePlayer,
-  resolveGuildTextChannel,
+  ensureMusicServer,
 } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
 
 export const data = new SlashCommandBuilder()
   .setName('search')
@@ -29,34 +26,43 @@ export const data = new SlashCommandBuilder()
     option.setName('query').setDescription('Search text').setRequired(true),
   )
 
+export const meta = {
+  category: 'playback',
+  examples: ['/search query: daft punk harder better'],
+} as const
+
 const MAX_OPTIONS = 10
 
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
   const voice = await ensureGuildVoice(interaction)
   if (!voice.ok) {
     return
   }
-  if (!(await ensureLavalink(interaction, client))) {
+  if (!(await ensureMusicServer(interaction))) {
     return
   }
 
   const queryRaw = interaction.options.getString('query', true)
-  const searchQuery = buildSearchQuery(queryRaw)
 
   await interaction.deferReply()
 
-  const player = await getOrCreatePlayer(
-    client,
-    voice.guildId,
-    voice.voiceChannel,
-    resolveGuildTextChannel(interaction),
-  )
-
   try {
-    const result = await player.search(searchQuery, interaction.user)
+    const r = await getSearch(queryRaw.trim())
+    if (!r.ok) {
+      await editReplyV2Error(interaction, await r.text())
+      return
+    }
+    const result = (await r.json()) as {
+      loadType: string
+      tracks?: Array<{
+        encoded?: string
+        info: { title?: string; author?: string }
+        pluginInfo?: Record<string, unknown>
+      }>
+      exception?: { message?: string }
+    }
 
     if (result.loadType === 'empty' || result.loadType === 'error') {
       const detail =
@@ -65,7 +71,7 @@ export async function execute(
       return
     }
 
-    const tracks = result.tracks
+    const tracks = result.tracks ?? []
     if (!tracks.length) {
       await editReplyV2Error(interaction, 'No playable tracks were returned.')
       return

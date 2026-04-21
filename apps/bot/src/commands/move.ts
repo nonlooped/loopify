@@ -1,10 +1,9 @@
 import { SlashCommandBuilder } from 'discord.js'
-import type { Track } from 'lavalink-client'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
-import { getReadyPlayer, replyMusicError } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
+import { postQueueMove } from '../server-link/api.js'
+import { getReadySnapshot, replyMusicError } from '../services/music-player.js'
 
 export const data = new SlashCommandBuilder()
   .setName('move')
@@ -24,18 +23,21 @@ export const data = new SlashCommandBuilder()
       .setMinValue(1),
   )
 
+export const meta = {
+  category: 'queue',
+  examples: ['/move from: 3 to: 1'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-  const ctx = await getReadyPlayer(interaction, client)
+  const ctx = await getReadySnapshot(interaction)
   if (!ctx.ok) {
     return
   }
   const from = interaction.options.getInteger('from', true)
   const to = interaction.options.getInteger('to', true)
-  const { queue } = ctx.player
-  const len = queue.tracks.length
+  const len = ctx.snapshot.queue.length
   if (len === 0) {
     await replyMusicError(interaction, 'The queue is empty.', true)
     return
@@ -58,14 +60,7 @@ export async function execute(
   }
   const fromIdx = from - 1
   const toIdx = to - 1
-  const removed = await queue.splice(fromIdx, 1)
-  const moved = Array.isArray(removed) ? removed[0] : removed
-  if (!moved) {
-    await replyMusicError(interaction, 'Could not move that track.', true)
-    return
-  }
-  const insertPos = toIdx > fromIdx ? toIdx - 1 : toIdx
-  await queue.splice(insertPos, 0, moved as Track)
+  await postQueueMove(ctx.guildId, { from: fromIdx, to: toIdx })
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.reload,
     title: 'Track Moved',

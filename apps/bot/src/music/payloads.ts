@@ -1,3 +1,4 @@
+import type { PlayerSnapshot } from '@loopify/protocol'
 import {
   ActionRowBuilder,
   ButtonStyle,
@@ -8,7 +9,6 @@ import {
   type MessageActionRowComponentBuilder,
   TextDisplayBuilder,
 } from 'discord.js'
-import type { Player } from 'lavalink-client'
 
 import { type AppEmojiMarkup, AppEmojis } from '../lib/app-emojis.js'
 import {
@@ -20,7 +20,6 @@ import {
   separatorLarge,
   v2MessageOptions,
 } from '../lib/components-v2.js'
-import { requesterUserId } from '../services/music-player.js'
 
 export function formatMs(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) {
@@ -62,10 +61,10 @@ function npButtonCustomId(
 }
 
 export async function buildNowPlayingPayload(
-  player: Player,
+  snapshot: PlayerSnapshot,
   guild: Guild,
 ): Promise<InteractionReplyOptions> {
-  const current = player.queue.current
+  const current = snapshot.current
   if (!current) {
     return v2MessageOptions(
       createStatusContainer({
@@ -80,17 +79,17 @@ export async function buildNowPlayingPayload(
   const title = current.info.title ?? 'Unknown track'
   const author = current.info.author ?? 'Unknown artist'
   const duration = current.info.duration ?? 0
-  const position = player.position
+  const position = snapshot.position
   const progress01 = duration > 0 ? Math.min(1, position / duration) : 0
   const bar = buildSegmentedProgressBar(progress01, 12, progressTheme)
 
-  const rid = requesterUserId(current.requester)
+  const rid = current.requesterId
   const requesterLine = rid ? `<@${rid}>` : 'Unknown'
 
   let channelLine = 'Unknown'
-  if (player.voiceChannelId) {
+  if (snapshot.voiceChannelId) {
     const ch = await guild.channels
-      .fetch(player.voiceChannelId)
+      .fetch(snapshot.voiceChannelId)
       .catch(() => null)
     if (ch?.isVoiceBased()) {
       channelLine = ch.name
@@ -108,8 +107,8 @@ export async function buildNowPlayingPayload(
     `\`${timeLine}\`\n` +
     bar
 
-  const loopActive = player.repeatMode === 'track'
-  const pauseBtn = player.paused
+  const loopActive = snapshot.repeatMode === 'track'
+  const pauseBtn = snapshot.paused
     ? emojiButton({
         customId: npButtonCustomId('pause', guild.id),
         emojiMarkup: AppEmojis.play,

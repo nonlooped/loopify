@@ -1,21 +1,20 @@
+import type { PlayerSnapshot } from '@loopify/protocol'
 import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   GuildMember,
-  type GuildTextBasedChannel,
   MessageFlags,
   PermissionFlagsBits,
   type StringSelectMenuInteraction,
   type VoiceBasedChannel,
 } from 'discord.js'
-import type { Player, SearchQuery } from 'lavalink-client'
-import { createErrorContainer } from '../lib/components-v2.js'
-import type { BotClient } from '../types/commands.js'
 
-/** Safe text channel in a guild for Lavalink `textChannelId`. */
+import { createErrorContainer } from '../lib/components-v2.js'
+import { getPlayerSnapshot, pingMusicServer } from '../server-link/api.js'
+
 export function resolveGuildTextChannel(
   interaction: ChatInputCommandInteraction | StringSelectMenuInteraction,
-): GuildTextBasedChannel | null {
+) {
   const ch = interaction.channel
   if (!ch?.isTextBased() || !interaction.inGuild()) {
     return null
@@ -23,15 +22,15 @@ export function resolveGuildTextChannel(
   if (!('guild' in ch) || !ch.guild) {
     return null
   }
-  return ch as GuildTextBasedChannel
+  return ch
 }
 
-export function buildSearchQuery(raw: string): SearchQuery {
+export function buildSearchQuery(raw: string): string {
   const trimmed = raw.trim()
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed
   }
-  return { query: trimmed, source: 'ytsearch' }
+  return trimmed
 }
 
 /** Parse `mm:ss`, `hh:mm:ss`, or plain seconds → milliseconds. */
@@ -56,14 +55,6 @@ export function parseTimeToMs(input: string): number | null {
     return (h * 3600 + m * 60 + s) * 1000
   }
   return null
-}
-
-export function requesterUserId(requester: unknown): string | null {
-  if (!requester || typeof requester !== 'object') {
-    return null
-  }
-  const id = (requester as { id?: unknown }).id
-  return typeof id === 'string' ? id : null
 }
 
 export function trackDedupeKey(track: {
@@ -159,14 +150,13 @@ export async function ensureGuildVoice(
   }
 }
 
-export async function ensureLavalink(
+export async function ensureMusicServer(
   interaction: ChatInputCommandInteraction | StringSelectMenuInteraction,
-  client: BotClient,
 ): Promise<boolean> {
-  if (!client.lavalink.useable) {
+  if (!(await pingMusicServer())) {
     await replyMusicError(
       interaction,
-      'The music service is not connected yet. Try again shortly.',
+      'The music service is not reachable. Try again shortly.',
       true,
     )
     return false
@@ -174,35 +164,9 @@ export async function ensureLavalink(
   return true
 }
 
-export async function getOrCreatePlayer(
-  client: BotClient,
-  guildId: string,
-  voiceChannel: VoiceBasedChannel,
-  textChannel: GuildTextBasedChannel | null,
-): Promise<Player> {
-  let player = client.lavalink.getPlayer(guildId)
-  if (!player) {
-    player = client.lavalink.createPlayer({
-      guildId,
-      voiceChannelId: voiceChannel.id,
-      textChannelId: textChannel?.id ?? undefined,
-      selfDeaf: true,
-    })
-    await player.connect()
-  } else if (player.voiceChannelId !== voiceChannel.id) {
-    await player.changeVoiceState({ voiceChannelId: voiceChannel.id })
-  }
-  return player
-}
-
-export function getPlayer(client: BotClient, guildId: string): Player | null {
-  return client.lavalink.getPlayer(guildId) ?? null
-}
-
-export async function requirePlayer(
+export async function requirePlayerSnapshot(
   interaction: ChatInputCommandInteraction,
-  client: BotClient,
-): Promise<Player | null> {
+): Promise<PlayerSnapshot | null> {
   if (!interaction.guildId) {
     await replyMusicError(
       interaction,
@@ -211,8 +175,8 @@ export async function requirePlayer(
     )
     return null
   }
-  const player = client.lavalink.getPlayer(interaction.guildId)
-  if (!player) {
+  const snap = await getPlayerSnapshot(interaction.guildId)
+  if (!snap) {
     await replyMusicError(
       interaction,
       'No active music session in this server.',
@@ -220,34 +184,34 @@ export async function requirePlayer(
     )
     return null
   }
-  return player
+  return snap
 }
 
-/** Same voice channel as the bot (or bot not in VC yet). */
-export async function getReadyPlayer(
+export async function getReadySnapshot(
   interaction: ChatInputCommandInteraction,
-  client: BotClient,
-): Promise<{ ok: true; player: Player; guildId: string } | { ok: false }> {
+): Promise<
+  { ok: true; snapshot: PlayerSnapshot; guildId: string } | { ok: false }
+> {
   const voice = await ensureGuildVoice(interaction)
   if (!voice.ok) {
     return { ok: false }
   }
-  if (!(await ensureLavalink(interaction, client))) {
+  if (!(await ensureMusicServer(interaction))) {
     return { ok: false }
   }
-  const player = await requirePlayer(interaction, client)
-  if (!player) {
+  const snapshot = await requirePlayerSnapshot(interaction)
+  if (!snapshot) {
     return { ok: false }
   }
-  if (!(await requireSameVoice(interaction, player))) {
+  if (!(await requireSameVoiceSnapshot(interaction, snapshot))) {
     return { ok: false }
   }
-  return { ok: true, player, guildId: voice.guildId }
+  return { ok: true, snapshot, guildId: voice.guildId }
 }
 
-export async function requireSameVoice(
+export async function requireSameVoiceSnapshot(
   interaction: ChatInputCommandInteraction | ButtonInteraction,
-  player: Player,
+  snapshot: PlayerSnapshot,
 ): Promise<boolean> {
   const member = interaction.member
   if (!(member instanceof GuildMember)) {
@@ -267,7 +231,40 @@ export async function requireSameVoice(
     )
     return false
   }
-  if (player.voiceChannelId && player.voiceChannelId !== vc.id) {
+  if (snapshot.voiceChannelId && snapshot.voiceChannelId !== vc.id) {
+    await replyMusicError(
+      interaction,
+      'You must be in the same voice channel as the bot.',
+      true,
+    )
+    return false
+  }
+  return true
+}
+
+export async function requireSameVoiceForButton(
+  interaction: ButtonInteraction,
+  snapshot: PlayerSnapshot,
+): Promise<boolean> {
+  const member = interaction.member
+  if (!(member instanceof GuildMember)) {
+    await replyMusicError(
+      interaction,
+      'Could not resolve your voice state.',
+      true,
+    )
+    return false
+  }
+  const vc = member.voice.channel
+  if (!vc) {
+    await replyMusicError(
+      interaction,
+      'Join the same voice channel as the bot to use this control.',
+      true,
+    )
+    return false
+  }
+  if (snapshot.voiceChannelId && snapshot.voiceChannelId !== vc.id) {
     await replyMusicError(
       interaction,
       'You must be in the same voice channel as the bot.',

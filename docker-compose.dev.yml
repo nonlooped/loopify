@@ -1,46 +1,101 @@
-# Development stack: bind-mount sources so tsx --watch and Vite HMR pick up edits.
-# Requires GUILD_ID (guild-scoped slash command sync; fast iteration vs global sync).
-#
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-#
-# Web UI: http://localhost:5173 (Vite) by default (override with WEB_DEV_PUBLISH_PORT).
-# The base file also publishes ${WEB_PUBLISH_PORT:-8080}:80; nothing listens on :80 in
-# this image — ignore that mapping or set WEB_PUBLISH_PORT to a free host port.
-
-include:
-  - docker-compose.yml
-
 services:
+  protocol:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["pnpm", "--filter", "@loopify/protocol", "dev"]
+    volumes:
+      - ./packages/protocol:/app/packages/protocol
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /app/packages/protocol/dist/index.js"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 2s
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["pnpm", "--filter", "server", "dev"]
+    volumes:
+      - ./apps/server:/app/apps/server
+      - ./packages/protocol:/app/packages/protocol
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+    depends_on:
+      lavalink:
+        condition: service_healthy
+      protocol:
+        condition: service_healthy
+
   bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["pnpm", "--filter", "bot", "dev"]
+    volumes:
+      - ./apps/bot:/app/apps/bot
+      - ./packages/protocol:/app/packages/protocol
     environment:
       NODE_ENV: development
-      GUILD_ID: ${GUILD_ID:?Set GUILD_ID in .env for Docker dev (guild command sync)}
-    volumes:
-      - ./apps/bot/src:/app/apps/bot/src
+      GUILD_ID: ${GUILD_ID:?Set GUILD_ID in .env for docker:dev}
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+    depends_on:
+      protocol:
+        condition: service_healthy
+      server:
+        condition: service_healthy
 
   web:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile.dev
-    ports:
-      - "${WEB_DEV_PUBLISH_PORT:-5173}:5173"
+      dockerfile: Dockerfile.dev
+    command: ["pnpm", "--filter", "web", "dev:api"]
     volumes:
-      - ./apps/web/src:/app/apps/web/src
-      - ./apps/web/public:/app/apps/web/public
-      - ./apps/web/index.html:/app/apps/web/index.html
-      - ./apps/web/vite.config.ts:/app/apps/web/vite.config.ts
-      - ./apps/web/tsconfig.json:/app/apps/web/tsconfig.json
-      - ./apps/web/tsconfig.app.json:/app/apps/web/tsconfig.app.json
-      - ./apps/web/tsconfig.node.json:/app/apps/web/tsconfig.node.json
+      - ./apps/web:/app/apps/web
+      - ./packages/protocol:/app/packages/protocol
     environment:
       NODE_ENV: development
+      PUBLIC_BASE_URL: http://localhost:5173
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+    depends_on:
+      protocol:
+        condition: service_healthy
+      server:
+        condition: service_healthy
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          'node -e "fetch(\"http://127.0.0.1:5173/\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 20
+      start_period: 10s
+
+  web-vite:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["pnpm", "--filter", "web", "dev"]
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./packages/protocol:/app/packages/protocol
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+      VITE_DEV_PROXY_TARGET: http://web:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      protocol:
+        condition: service_healthy
+      web:
+        condition: service_healthy

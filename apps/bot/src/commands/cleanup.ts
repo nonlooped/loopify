@@ -2,8 +2,8 @@ import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
-import { getReadyPlayer, requesterUserId } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
+import { deleteQueueIndex } from '../server-link/api.js'
+import { getReadySnapshot } from '../services/music-player.js'
 
 export const data = new SlashCommandBuilder()
   .setName('cleanup')
@@ -11,16 +11,19 @@ export const data = new SlashCommandBuilder()
     "Remove queued tracks from users who aren't in the voice channel",
   )
 
+export const meta = {
+  category: 'queue',
+  examples: ['/cleanup'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-  const ctx = await getReadyPlayer(interaction, client)
+  const ctx = await getReadySnapshot(interaction)
   if (!ctx.ok) {
     return
   }
-  const { player } = ctx
-  const vcId = player.voiceChannelId
+  const vcId = ctx.snapshot.voiceChannelId
   if (!vcId || !interaction.guild) {
     await replyMusicSuccess(interaction, {
       emoji: AppEmojis.reload,
@@ -40,8 +43,9 @@ export async function execute(
   }
   const present = new Set(channel.members.map((m) => m.id))
   const removeIdx: number[] = []
-  for (let i = 0; i < player.queue.tracks.length; i++) {
-    const uid = requesterUserId(player.queue.tracks[i].requester)
+  const { queue } = ctx.snapshot
+  for (let i = 0; i < queue.length; i++) {
+    const uid = queue[i]?.requesterId
     if (!uid) {
       continue
     }
@@ -50,7 +54,7 @@ export async function execute(
     }
   }
   for (const idx of removeIdx.sort((a, b) => b - a)) {
-    await player.queue.remove(idx)
+    await deleteQueueIndex(ctx.guildId, idx)
   }
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.reload,

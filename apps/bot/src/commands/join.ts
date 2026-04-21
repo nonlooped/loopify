@@ -2,35 +2,41 @@ import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
+import { postJoin } from '../server-link/api.js'
 import {
   ensureGuildVoice,
-  ensureLavalink,
-  getOrCreatePlayer,
+  ensureMusicServer,
   resolveGuildTextChannel,
 } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
 
 export const data = new SlashCommandBuilder()
   .setName('join')
   .setDescription('Join the voice channel you are in')
 
+export const meta = {
+  category: 'voice',
+  examples: ['/join'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
   const voice = await ensureGuildVoice(interaction)
   if (!voice.ok) {
     return
   }
-  if (!(await ensureLavalink(interaction, client))) {
+  if (!(await ensureMusicServer(interaction))) {
     return
   }
-  await getOrCreatePlayer(
-    client,
-    voice.guildId,
-    voice.voiceChannel,
-    resolveGuildTextChannel(interaction),
-  )
+  const textCh = resolveGuildTextChannel(interaction)
+  const r = await postJoin(voice.guildId, {
+    voiceChannelId: voice.voiceChannel.id,
+    textChannelId: textCh?.id,
+  })
+  if (!r.ok) {
+    await interaction.reply({ content: await r.text(), ephemeral: true })
+    return
+  }
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.play,
     title: 'Joined Voice',

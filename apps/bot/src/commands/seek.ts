@@ -2,12 +2,12 @@ import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
+import { postSeek } from '../server-link/api.js'
 import {
-  getReadyPlayer,
+  getReadySnapshot,
   parseTimeToMs,
   replyMusicError,
 } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
 
 export const data = new SlashCommandBuilder()
   .setName('seek')
@@ -19,11 +19,15 @@ export const data = new SlashCommandBuilder()
       .setRequired(true),
   )
 
+export const meta = {
+  category: 'playback',
+  examples: ['/seek position: 1:23', '/seek position: 90'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-  const ctx = await getReadyPlayer(interaction, client)
+  const ctx = await getReadySnapshot(interaction)
   if (!ctx.ok) {
     return
   }
@@ -37,7 +41,7 @@ export async function execute(
     )
     return
   }
-  const current = ctx.player.queue.current
+  const current = ctx.snapshot.current
   if (!current) {
     await replyMusicSuccess(interaction, {
       emoji: AppEmojis.play,
@@ -46,16 +50,8 @@ export async function execute(
     })
     return
   }
-  if (!current.info.isSeekable || current.info.isStream) {
-    await replyMusicError(
-      interaction,
-      'This track cannot be seeked (live stream or not seekable).',
-      true,
-    )
-    return
-  }
   await interaction.deferReply()
-  await ctx.player.seek(ms)
+  await postSeek(ctx.guildId, ms)
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.play,
     title: 'Seeked',

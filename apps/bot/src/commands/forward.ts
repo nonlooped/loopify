@@ -2,8 +2,8 @@ import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
 import { replyMusicSuccess } from '../music/reply.js'
-import { getReadyPlayer, replyMusicError } from '../services/music-player.js'
-import type { BotClient } from '../types/commands.js'
+import { postSeek } from '../server-link/api.js'
+import { getReadySnapshot } from '../services/music-player.js'
 
 export const data = new SlashCommandBuilder()
   .setName('forward')
@@ -17,16 +17,20 @@ export const data = new SlashCommandBuilder()
       .setMaxValue(3600),
   )
 
+export const meta = {
+  category: 'playback',
+  examples: ['/forward seconds: 30'],
+} as const
+
 export async function execute(
   interaction: import('discord.js').ChatInputCommandInteraction,
 ) {
-  const client = interaction.client as BotClient
-  const ctx = await getReadyPlayer(interaction, client)
+  const ctx = await getReadySnapshot(interaction)
   if (!ctx.ok) {
     return
   }
   const sec = interaction.options.getInteger('seconds', true)
-  const current = ctx.player.queue.current
+  const current = ctx.snapshot.current
   if (!current) {
     await replyMusicSuccess(interaction, {
       emoji: AppEmojis.next,
@@ -35,16 +39,8 @@ export async function execute(
     })
     return
   }
-  if (!current.info.isSeekable || current.info.isStream) {
-    await replyMusicError(
-      interaction,
-      'This track cannot be seeked (live stream or not seekable).',
-      true,
-    )
-    return
-  }
   await interaction.deferReply()
-  await ctx.player.seek(ctx.player.position + sec * 1000)
+  await postSeek(ctx.guildId, ctx.snapshot.position + sec * 1000)
   await replyMusicSuccess(interaction, {
     emoji: AppEmojis.next,
     title: 'Skipped Forward',

@@ -2,12 +2,9 @@
   "name": "loopify-monorepo",
   "license": "MIT",
   "scripts": {
-    "dev:bot": "pnpm --filter bot dev",
-    "dev:web": "pnpm --filter web dev",
-    "docker:up": "docker compose build bot && docker compose build web && docker compose up",
-    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml build bot && docker compose -f docker-compose.yml -f docker-compose.dev.yml build web && docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
-    "docker:prune": "docker builder prune -af",
-    "docker:down": "docker compose down",
+    "build:protocol": "pnpm --filter @loopify/protocol build",
+    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
+    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down",
     "check": "biome check .",
     "format": "biome format --write .",
     "lint": "biome lint ."
