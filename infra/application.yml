@@ -51,7 +51,10 @@ lavalink:
     # Lower = snappier, but too low can cause crackling/stutter.
     nonAllocatingFrameBuffer: false
     bufferDurationMs: 120
-    frameBufferDurationMs: 2000
+    # frameBufferDurationMs controls how much encoded audio is pre-buffered.
+    # 400ms keeps audible pause/skip close to the UI click at the cost of
+    # slightly higher stutter risk on constrained CPUs or flaky networks.
+    frameBufferDurationMs: 400
 
     # Lower CPU cost helps responsiveness under load.
     opusEncodingQuality: 5

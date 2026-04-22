@@ -1,15 +1,26 @@
 import { useEffect, useMemo, useState } from "react"
-import type { CommandCategory, CommandInfo, CommandOption } from "@loopify/protocol"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { ArrowLeftIcon, SearchIcon, XIcon } from "lucide-react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import type {
+  CommandCategory,
+  CommandInfo,
+  CommandOption,
+} from "@/lib/contracts"
+import { motion, useReducedMotion } from "motion/react"
+import { ArrowLeftIcon, SearchIcon } from "lucide-react"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchCommands } from "@/lib/api"
-import { cn } from "@/lib/utils"
 
 const CATEGORY_ORDER: readonly CommandCategory[] = [
   "playback",
@@ -81,13 +92,11 @@ function CommandRow({
   onSelect: (name: string) => void
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
       onClick={() => onSelect(cmd.name)}
-      className={cn(
-        "group flex w-full flex-col gap-2 rounded-lg border border-border bg-background p-4 text-left transition-colors",
-        "hover:border-foreground/30 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      )}
+      className="group h-auto w-full flex-col items-stretch gap-2 rounded-lg p-4 text-left whitespace-normal"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -101,170 +110,142 @@ function CommandRow({
           ) : null}
         </div>
       </div>
-      <p className="text-sm leading-relaxed text-muted-foreground">
+      <p className="text-sm leading-relaxed font-normal text-muted-foreground">
         {cmd.description || "No description."}
       </p>
       {cmd.options.length > 0 ? (
         <div className="mt-1 flex flex-wrap gap-1.5">
           {cmd.options.map((o) => (
-            <span
+            <Badge
               key={o.name}
-              className="inline-flex items-center gap-1 rounded-3xl border border-border/60 bg-muted/40 px-2 py-0.5 font-mono text-[0.65rem] text-muted-foreground"
+              variant="outline"
+              className="gap-1 bg-muted/40 font-mono text-[0.65rem] font-normal text-muted-foreground"
             >
               {o.name}
               {o.required ? <span className="text-destructive">*</span> : null}
-            </span>
+            </Badge>
           ))}
         </div>
       ) : null}
-    </button>
+    </Button>
   )
 }
 
 function CommandDetail({
   cmd,
+  open,
   onClose,
 }: {
-  cmd: CommandInfo
+  cmd: CommandInfo | null
+  open: boolean
   onClose: () => void
 }) {
-  const reduceMotion = useReducedMotion()
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose()
-      }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => {
-      document.body.style.overflow = prev
-      window.removeEventListener("keydown", onKey)
-    }
-  }, [onClose])
-
   return (
-    <motion.div
-      key="commands-detail"
-      className="fixed inset-0 z-50 flex items-stretch justify-end"
-      initial={reduceMotion ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={reduceMotion ? undefined : { opacity: 0 }}
-      transition={{ duration: 0.18 }}
-      aria-modal="true"
-      role="dialog"
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          onClose()
+        }
+      }}
     >
-      <button
-        type="button"
-        aria-label="Close details"
-        onClick={onClose}
-        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
-      />
-      <motion.aside
-        initial={reduceMotion ? false : { x: 32, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={reduceMotion ? undefined : { x: 32, opacity: 0 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-        className="relative flex h-full w-full max-w-xl flex-col gap-6 overflow-y-auto border-l border-border bg-background p-6 shadow-2xl sm:p-8"
+      <SheetContent
+        side="right"
+        className="flex w-full max-w-xl flex-col gap-6 overflow-y-auto bg-background p-6 text-foreground sm:max-w-xl sm:p-8"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Badge variant="outline" className="capitalize">
-              {CATEGORY_LABELS[cmd.category] ?? cmd.category}
-            </Badge>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            aria-label="Close details"
-          >
-            <XIcon />
-          </Button>
-        </div>
+        {cmd ? (
+          <>
+            <SheetHeader className="p-0">
+              <Badge variant="outline" className="w-fit capitalize">
+                {CATEGORY_LABELS[cmd.category] ?? cmd.category}
+              </Badge>
+              <SheetTitle className="font-mono text-3xl font-semibold tracking-tight text-foreground">
+                /{cmd.name}
+              </SheetTitle>
+              <SheetDescription className="text-base leading-relaxed text-muted-foreground">
+                {cmd.description || "No description."}
+              </SheetDescription>
+            </SheetHeader>
 
-        <div>
-          <h2 className="font-mono text-3xl font-semibold tracking-tight text-foreground">
-            /{cmd.name}
-          </h2>
-          <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            {cmd.description || "No description."}
-          </p>
-        </div>
-
-        {cmd.options.length > 0 ? (
-          <section>
-            <h3 className="eyebrow">Options</h3>
-            <dl className="mt-3 divide-y divide-border rounded-lg border border-border">
-              {cmd.options.map((o) => {
-                const hint = formatOption(o)
-                return (
-                  <div
-                    key={o.name}
-                    className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,10rem)_1fr] sm:items-start"
-                  >
-                    <dt className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-foreground">
-                        {o.name}
-                      </span>
-                      {o.required ? (
-                        <Badge
-                          variant="outline"
-                          className="border-destructive/40 text-destructive"
+            {cmd.options.length > 0 ? (
+              <section>
+                <h3 className="eyebrow">Options</h3>
+                <Card className="mt-3 gap-0 py-0">
+                  <CardContent className="divide-y divide-border p-0">
+                    {cmd.options.map((o) => {
+                      const hint = formatOption(o)
+                      return (
+                        <dl
+                          key={o.name}
+                          className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,10rem)_1fr] sm:items-start"
                         >
-                          required
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">optional</Badge>
-                      )}
-                    </dt>
-                    <dd className="text-sm leading-relaxed text-muted-foreground">
-                      <p>{o.description}</p>
-                      {hint ? (
-                        <p className="mt-1 font-mono text-[0.75rem] text-muted-foreground/70">
-                          {hint}
-                        </p>
-                      ) : null}
-                    </dd>
-                  </div>
-                )
-              })}
-            </dl>
-          </section>
-        ) : null}
+                          <dt className="flex items-center gap-2">
+                            <span className="font-mono text-sm text-foreground">
+                              {o.name}
+                            </span>
+                            {o.required ? (
+                              <Badge
+                                variant="outline"
+                                className="border-destructive/40 text-destructive"
+                              >
+                                required
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline">optional</Badge>
+                            )}
+                          </dt>
+                          <dd className="text-sm leading-relaxed text-muted-foreground">
+                            <p>{o.description}</p>
+                            {hint ? (
+                              <p className="mt-1 font-mono text-[0.75rem] text-muted-foreground/70">
+                                {hint}
+                              </p>
+                            ) : null}
+                          </dd>
+                        </dl>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              </section>
+            ) : null}
 
-        {cmd.examples.length > 0 ? (
-          <section>
-            <h3 className="eyebrow">Examples</h3>
-            <div className="mt-3 flex flex-col gap-2">
-              {cmd.examples.map((ex) => (
-                <code
-                  key={ex}
-                  className="rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-sm text-foreground"
-                >
-                  {ex}
-                </code>
-              ))}
+            {cmd.examples.length > 0 ? (
+              <section>
+                <h3 className="eyebrow">Examples</h3>
+                <Card className="mt-3 gap-0 py-0">
+                  <CardContent className="flex flex-col divide-y divide-border p-0">
+                    {cmd.examples.map((ex) => (
+                      <code
+                        key={ex}
+                        className="px-3 py-2 font-mono text-sm text-foreground"
+                      >
+                        {ex}
+                      </code>
+                    ))}
+                  </CardContent>
+                </Card>
+              </section>
+            ) : null}
+
+            <div className="mt-auto pt-4">
+              <Button variant="outline" onClick={onClose}>
+                <ArrowLeftIcon data-icon="inline-start" />
+                Back to all commands
+              </Button>
             </div>
-          </section>
+          </>
         ) : null}
-
-        <div className="mt-auto pt-4">
-          <Button variant="outline" onClick={onClose}>
-            <ArrowLeftIcon data-icon="inline-start" />
-            Back to all commands
-          </Button>
-        </div>
-      </motion.aside>
-    </motion.div>
+      </SheetContent>
+    </Sheet>
   )
 }
 
 export function CommandsPage() {
   const reduceMotion = useReducedMotion()
-  const params = useParams<{ name?: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const selectedCmd = searchParams.get("cmd")
   const [state, setState] = useState<LoadState>(
     commandsCache
       ? { status: "ready", commands: commandsCache }
@@ -324,19 +305,42 @@ export function CommandsPage() {
   }, [commands, query])
 
   const selected = useMemo(() => {
-    if (!params.name) {
+    if (!selectedCmd) {
       return null
     }
-    return commands.find((c) => c.name === params.name) ?? null
-  }, [commands, params.name])
+    return commands.find((c) => c.name === selectedCmd) ?? null
+  }, [commands, selectedCmd])
 
   useEffect(() => {
-    if (params.name && state.status === "ready" && !selected) {
+    if (selectedCmd && state.status === "ready" && !selected) {
       navigate("/commands", { replace: true })
     }
-  }, [params.name, selected, state.status, navigate])
+  }, [selectedCmd, selected, state.status, navigate])
 
-  const closeDetail = () => navigate("/commands")
+  const openCommand = (name: string) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set("cmd", name)
+        return next
+      },
+      { replace: searchParams.has("cmd") },
+    )
+  }
+
+  const closeDetail = () => {
+    if (!searchParams.has("cmd")) {
+      return
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete("cmd")
+        return next
+      },
+      { replace: true },
+    )
+  }
 
   return (
     <div className="flex flex-col gap-10 lg:gap-14">
@@ -384,17 +388,23 @@ export function CommandsPage() {
           ))}
         </section>
       ) : state.status === "error" ? (
-        <section className="rounded-lg border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-          Could not load commands: {state.message}
-        </section>
+        <Card size="sm">
+          <CardContent className="text-sm text-muted-foreground">
+            Could not load commands: {state.message}
+          </CardContent>
+        </Card>
       ) : commands.length === 0 ? (
-        <section className="rounded-lg border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-          Loading the latest commands… (the bot may still be warming up).
-        </section>
+        <Card size="sm">
+          <CardContent className="text-sm text-muted-foreground">
+            Loading the latest commands… (the bot may still be warming up).
+          </CardContent>
+        </Card>
       ) : grouped.length === 0 ? (
-        <section className="rounded-lg border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-          No commands match “{query}”.
-        </section>
+        <Card size="sm">
+          <CardContent className="text-sm text-muted-foreground">
+            No commands match “{query}”.
+          </CardContent>
+        </Card>
       ) : (
         <div className="flex flex-col gap-12">
           {grouped.map((g) => (
@@ -412,7 +422,7 @@ export function CommandsPage() {
                   <CommandRow
                     key={cmd.name}
                     cmd={cmd}
-                    onSelect={(name) => navigate(`/commands/${name}`)}
+                    onSelect={openCommand}
                   />
                 ))}
               </div>
@@ -421,17 +431,20 @@ export function CommandsPage() {
         </div>
       )}
 
-      <AnimatePresence>
-        {selected ? (
-          <CommandDetail cmd={selected} onClose={closeDetail} />
-        ) : null}
-      </AnimatePresence>
+      <CommandDetail
+        cmd={selected}
+        open={Boolean(selected)}
+        onClose={closeDetail}
+      />
 
       <noscript>
         <ul>
           {commands.map((c) => (
             <li key={c.name}>
-              <Link to={`/commands/${c.name}`}>/{c.name}</Link> — {c.description}
+              <Link to={{ pathname: "/commands", search: `?${new URLSearchParams({ cmd: c.name }).toString()}` }}>
+                /{c.name}
+              </Link>{" "}
+              — {c.description}
             </li>
           ))}
         </ul>

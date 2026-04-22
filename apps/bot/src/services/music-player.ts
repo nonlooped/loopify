@@ -1,4 +1,4 @@
-import type { PlayerSnapshot } from '@loopify/protocol'
+import type { PlayerSnapshot } from '../types/music.js'
 import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,

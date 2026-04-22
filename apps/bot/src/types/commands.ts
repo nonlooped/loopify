@@ -1,4 +1,3 @@
-import type { CommandCategory, CommandInfo } from '@loopify/protocol'
 import type {
   AutocompleteInteraction,
   ChatInputCommandInteraction,
@@ -8,6 +7,7 @@ import type {
   SlashCommandBuilder,
   UserContextMenuCommandInteraction,
 } from 'discord.js'
+import type { CommandCategory, CommandInfo } from './music.js'
 
 export type AnyExecutableCommandInteraction =
   | ChatInputCommandInteraction

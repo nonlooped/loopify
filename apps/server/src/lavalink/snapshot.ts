@@ -1,22 +1,35 @@
-import type { PlayerSnapshot, QueueItem } from '@loopify/protocol'
 import type { Player, Track } from 'lavalink-client'
+import type { PlayerSnapshot, QueueItem } from '../contracts/types.js'
 
-function requesterIdFromTrack(t: Track): string | undefined {
+type RequesterShape = {
+  id?: string
+  name?: string
+  avatarUrl?: string
+}
+
+function requesterFromTrack(t: Track): RequesterShape {
   const r = t.requester
   if (!r || typeof r !== 'object') {
-    return undefined
+    return {}
   }
-  const id = (r as { id?: unknown }).id
-  return typeof id === 'string' ? id : undefined
+  const obj = r as Record<string, unknown>
+  const id = typeof obj.id === 'string' ? obj.id : undefined
+  const name = typeof obj.name === 'string' ? obj.name : undefined
+  const avatarUrl =
+    typeof obj.avatarUrl === 'string' ? obj.avatarUrl : undefined
+  return { id, name, avatarUrl }
 }
 
 function trackToQueueItem(t: Track | null): QueueItem | null {
   if (!t) {
     return null
   }
+  const requester = requesterFromTrack(t)
   return {
     encoded: t.encoded,
-    requesterId: requesterIdFromTrack(t),
+    requesterId: requester.id,
+    requesterName: requester.name,
+    requesterAvatarUrl: requester.avatarUrl,
     info: {
       title: t.info.title,
       author: t.info.author,

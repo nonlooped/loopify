@@ -1,12 +1,12 @@
-import type { ServerEvent } from '@loopify/protocol'
 import type { LavalinkManager } from 'lavalink-client'
+import type { ServerEvent } from '../contracts/types.js'
 import { playerToSnapshot } from '../lavalink/snapshot.js'
 import type { BotLink } from '../links/bot-link.js'
-import type { WebLink } from '../links/web-link.js'
+import type { EventHub } from '../links/event-hub.js'
 
 export function wireLavalinkEvents(
   manager: LavalinkManager,
-  webLink: WebLink,
+  eventHub: EventHub,
   botLink: BotLink,
 ) {
   manager.on('trackStart', (player) => {
@@ -19,7 +19,7 @@ export function wireLavalinkEvents(
       guildId: player.guildId,
       snapshot: snap,
     }
-    webLink.broadcast(ev)
+    eventHub.broadcast(ev)
     botLink.pushServerEvent(ev)
   })
 
@@ -28,7 +28,7 @@ export function wireLavalinkEvents(
       type: 'trackEnd',
       guildId: player.guildId,
     }
-    webLink.broadcast(ev)
+    eventHub.broadcast(ev)
     botLink.pushServerEvent(ev)
   })
 
@@ -38,7 +38,7 @@ export function wireLavalinkEvents(
       guildId: player.guildId,
       snapshot: playerToSnapshot(player),
     }
-    webLink.broadcast(ev)
+    eventHub.broadcast(ev)
     botLink.pushServerEvent(ev)
   })
 
@@ -48,7 +48,7 @@ export function wireLavalinkEvents(
       guildId: player.guildId,
       length: player.queue.tracks.length + (player.queue.current ? 1 : 0),
     }
-    webLink.broadcast(ev)
+    eventHub.broadcast(ev)
     botLink.pushServerEvent(ev)
   })
 
@@ -57,7 +57,7 @@ export function wireLavalinkEvents(
       type: 'playerDestroyed',
       guildId: player.guildId,
     }
-    webLink.broadcast(ev)
+    eventHub.broadcast(ev)
     botLink.pushServerEvent(ev)
   })
 }

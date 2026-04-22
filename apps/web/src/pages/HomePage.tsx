@@ -1,7 +1,18 @@
+import { useRef } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import { Link } from "react-router-dom"
 
+import { LinkedLoopHero } from "@/components/home/linked-loop-hero"
+import { ScrollSeekbar } from "@/components/home/scroll-seekbar"
+import { TiltIn } from "@/components/home/tilt-in"
 import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { useAuth } from "@/lib/auth"
 
 import {
@@ -37,10 +48,13 @@ const highlights = [
 export function HomePage() {
   const reduceMotion = useReducedMotion()
   const auth = useAuth()
+  const pageRef = useRef<HTMLDivElement | null>(null)
 
   return (
-    <div className="flex flex-col gap-20 lg:gap-28">
+    <div ref={pageRef} className="flex flex-col gap-20 lg:gap-28">
+      <ScrollSeekbar targetRef={pageRef} />
       <section>
+        <LinkedLoopHero>
         <motion.div
           initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -92,52 +106,55 @@ export function HomePage() {
             )}
           </motion.div>
         </motion.div>
+        </LinkedLoopHero>
       </section>
 
       <section aria-label="Product preview">
-        <div className="overflow-hidden rounded-xl border border-border bg-muted/30 shadow-[0_24px_80px_-32px_rgba(0,0,0,0.35)] dark:shadow-[0_24px_80px_-32px_rgba(0,0,0,0.6)]">
-          <div className="flex h-10 items-center gap-2 border-b border-border bg-muted/50 px-4">
-            <span
-              className="size-2.5 rounded-full bg-[oklch(0.62_0.2_25)]"
-              aria-hidden
-            />
-            <span
-              className="size-2.5 rounded-full bg-[oklch(0.78_0.12_85)]"
-              aria-hidden
-            />
-            <span
-              className="size-2.5 rounded-full bg-[oklch(0.72_0.12_145)]"
-              aria-hidden
-            />
-            <span className="ml-3 font-mono text-[0.65rem] text-muted-foreground">
-              loopify.app / room
-            </span>
-          </div>
-          <div className="max-h-[min(70vh,900px)] overflow-y-auto bg-background p-6 sm:p-10 lg:p-14">
-            <ControllerProductSurface
-              embedMode
-              player={CONTROLLER_PREVIEW_PLAYER}
-              onPauseToggle={() => {}}
-              onSkip={() => {}}
-              onStop={() => {}}
-              onSeek={() => {}}
-              onVolume={() => {}}
-              onLoop={() => {}}
-              onShuffle={() => {}}
-              onClear={() => {}}
-              search=""
-              setSearch={() => {}}
-              onSearch={() => {}}
-              searchTracks={[]}
-              searchPending={false}
-              onAdd={() => {}}
-              onMove={() => {}}
-              onRemove={() => {}}
-              queueBusy={false}
-              transportPending={false}
-            />
-          </div>
-        </div>
+        <TiltIn>
+          <Card className="gap-0 bg-muted/30 py-0 shadow-[0_24px_80px_-32px_rgba(0,0,0,0.35)] dark:shadow-[0_24px_80px_-32px_rgba(0,0,0,0.6)]">
+            <CardHeader className="flex h-10 flex-row items-center gap-2 border-b border-border bg-muted/50 px-4">
+              <span
+                className="size-2.5 rounded-full bg-[oklch(0.62_0.2_25)]"
+                aria-hidden
+              />
+              <span
+                className="size-2.5 rounded-full bg-[oklch(0.78_0.12_85)]"
+                aria-hidden
+              />
+              <span
+                className="size-2.5 rounded-full bg-[oklch(0.72_0.12_145)]"
+                aria-hidden
+              />
+              <span className="ml-3 font-mono text-[0.65rem] text-muted-foreground">
+                loopify.app / room
+              </span>
+            </CardHeader>
+            <CardContent className="max-h-[min(70vh,900px)] overflow-y-auto bg-background p-6 sm:p-10 lg:p-14">
+              <ControllerProductSurface
+                embedMode
+                player={CONTROLLER_PREVIEW_PLAYER}
+                onPauseToggle={() => {}}
+                onSkip={() => {}}
+                onStop={() => {}}
+                onSeek={() => {}}
+                onVolume={() => {}}
+                onLoop={() => {}}
+                onShuffle={() => {}}
+                onClear={() => {}}
+                search=""
+                setSearch={() => {}}
+                onSearch={() => {}}
+                searchTracks={[]}
+                searchPending={false}
+                onAdd={() => {}}
+                onMove={() => {}}
+                onRemove={() => {}}
+                queueBusy={false}
+                transportPending={false}
+              />
+            </CardContent>
+          </Card>
+        </TiltIn>
       </section>
 
       <section className="flex flex-col gap-16 lg:gap-20">
@@ -177,21 +194,29 @@ export function HomePage() {
 
       <section className="border-t border-border pt-12">
         <p className="eyebrow">Coming soon</p>
-        <div className="mt-8 grid gap-10 md:grid-cols-2 md:gap-12">
-          <div className="border-b border-border pb-10 md:border-b-0 md:border-r md:border-border md:pb-0 md:pr-12">
-            <h3 className="text-lg font-semibold tracking-tight">Favorites</h3>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-              Save the songs you keep coming back to, and bring them into the
-              room in one tap.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold tracking-tight">Playlists</h3>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-              Build collections that slip right into the shared queue when
-              you’re ready to press play.
-            </p>
-          </div>
+        <div className="mt-8 grid gap-6 md:grid-cols-2 md:gap-8">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold tracking-tight">
+                Favorites
+              </CardTitle>
+              <CardDescription className="text-sm leading-relaxed sm:text-base">
+                Save the songs you keep coming back to, and bring them into the
+                room in one tap.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold tracking-tight">
+                Playlists
+              </CardTitle>
+              <CardDescription className="text-sm leading-relaxed sm:text-base">
+                Build collections that slip right into the shared queue when
+                you’re ready to press play.
+              </CardDescription>
+            </CardHeader>
+          </Card>
         </div>
       </section>
     </div>

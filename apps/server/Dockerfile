@@ -6,14 +6,14 @@ WORKDIR /app
 
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY apps/server/package.json ./apps/server/
-COPY packages/protocol/package.json ./packages/protocol/
+COPY apps/web/package.json ./apps/web/
 
 RUN pnpm install --frozen-lockfile --filter server...
 
-COPY packages/protocol ./packages/protocol
 COPY apps/server ./apps/server
+COPY apps/web ./apps/web
 
-RUN pnpm --filter @loopify/protocol build
+RUN pnpm --filter web build
 
 WORKDIR /app/apps/server
 CMD ["pnpm", "start"]

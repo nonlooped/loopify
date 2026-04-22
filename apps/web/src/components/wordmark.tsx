@@ -53,11 +53,20 @@ const loopMarkStyle: CSSProperties = {
   marginInline: "0.01em",
 }
 
-function LoopMark({ accent }: { accent: boolean }) {
+type LoopMarkProps = {
+  accent?: boolean
+  className?: string
+}
+
+export function LoopMark({ accent = false, className }: LoopMarkProps) {
   return (
     <span
       aria-hidden="true"
-      className={cn("inline-block", accent ? "text-primary" : "text-current")}
+      className={cn(
+        "inline-block",
+        accent ? "text-primary" : "text-current",
+        className,
+      )}
       style={loopMarkStyle}
     >
       <svg

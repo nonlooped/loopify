@@ -1,11 +1,11 @@
-import type { CommandInfo, ServerEvent } from '@loopify/protocol'
 import {
   botToServerMessageSchema,
   serverEventPushSchema,
-} from '@loopify/protocol'
+} from '../contracts/types.js'
 import type { LavalinkManager } from 'lavalink-client'
 import type pino from 'pino'
 import type { WebSocket } from 'ws'
+import type { CommandInfo, ServerEvent } from '../contracts/types.js'
 import type { VoiceMirror } from '../voice/mirror.js'
 
 type GatewayPending = { guildId: string; payload: unknown }

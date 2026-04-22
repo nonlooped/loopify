@@ -22,7 +22,7 @@ if (!rootEl) {
 createRoot(rootEl).render(
   <StrictMode>
     <QueryClientProvider client={client}>
-      <BrowserRouter>
+      <BrowserRouter unstable_useTransitions={false}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>

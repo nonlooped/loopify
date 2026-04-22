@@ -1,5 +1,4 @@
-import type { PlayerSnapshot } from '@loopify/protocol'
-
+import type { LoopMode, PlayerSnapshot } from '../types/music.js'
 import { assertRequiredEnv } from '../config/env.js'
 
 function baseUrl() {
@@ -7,7 +6,7 @@ function baseUrl() {
 }
 
 function token() {
-  return assertRequiredEnv('INTERNAL_API_TOKEN')
+  return assertRequiredEnv('BOT_LINK_TOKEN')
 }
 
 async function req(path: string, init?: RequestInit): Promise<Response> {
@@ -61,13 +60,14 @@ export async function postPlay(
     voiceChannelId: string
     textChannelId?: string
     requesterId: string
+    requesterName?: string
+    requesterAvatarUrl?: string
   },
 ) {
-  const r = await req(`/api/players/${encodeURIComponent(guildId)}/play`, {
+  return req(`/api/players/${encodeURIComponent(guildId)}/play`, {
     method: 'POST',
     body: JSON.stringify(body),
   })
-  return r
 }
 
 export async function postPause(guildId: string, body?: { paused?: boolean }) {
@@ -105,10 +105,7 @@ export async function postVolume(guildId: string, volume: number) {
   })
 }
 
-export async function postLoop(
-  guildId: string,
-  mode: 'off' | 'track' | 'queue',
-) {
+export async function postLoop(guildId: string, mode: LoopMode) {
   return req(`/api/players/${encodeURIComponent(guildId)}/loop`, {
     method: 'POST',
     body: JSON.stringify({ mode }),
@@ -138,7 +135,13 @@ export async function postStop(guildId: string) {
 
 export async function postQueueAdd(
   guildId: string,
-  body: { encoded: string; requesterId: string; position?: number },
+  body: {
+    encoded: string
+    requesterId: string
+    requesterName?: string
+    requesterAvatarUrl?: string
+    position?: number
+  },
 ) {
   return req(`/api/players/${encodeURIComponent(guildId)}/queue`, {
     method: 'POST',

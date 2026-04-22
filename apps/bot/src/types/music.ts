@@ -15,14 +15,10 @@ export const trackInfoSchema = z.object({
 export const queueItemSchema = z.object({
   encoded: z.string().optional(),
   requesterId: z.string().nullable().optional(),
+  requesterName: z.string().optional(),
+  requesterAvatarUrl: z.string().optional(),
   info: trackInfoSchema,
 })
-
-export const filterStateSchema = z
-  .object({
-    volume: z.number().optional(),
-  })
-  .passthrough()
 
 export const playerSnapshotSchema = z.object({
   guildId: z.string(),
@@ -43,7 +39,41 @@ export const playerSnapshotSchema = z.object({
     .optional(),
 })
 
-export type TrackInfo = z.infer<typeof trackInfoSchema>
+export const commandOptionSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: z.number(),
+  required: z.boolean().optional(),
+  minValue: z.number().optional(),
+  maxValue: z.number().optional(),
+  choices: z
+    .array(
+      z.object({
+        name: z.string(),
+        value: z.union([z.string(), z.number()]),
+      }),
+    )
+    .optional(),
+})
+
+export const commandCategorySchema = z.enum([
+  'playback',
+  'queue',
+  'voice',
+  'info',
+  'other',
+])
+
+export const commandInfoSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  category: commandCategorySchema.default('other'),
+  examples: z.array(z.string()).default([]),
+  options: z.array(commandOptionSchema).default([]),
+})
+
 export type QueueItem = z.infer<typeof queueItemSchema>
-export type FilterState = z.infer<typeof filterStateSchema>
 export type PlayerSnapshot = z.infer<typeof playerSnapshotSchema>
+export type CommandOption = z.infer<typeof commandOptionSchema>
+export type CommandCategory = z.infer<typeof commandCategorySchema>
+export type CommandInfo = z.infer<typeof commandInfoSchema>

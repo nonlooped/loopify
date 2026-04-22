@@ -103,6 +103,8 @@ export async function execute(
   const addR = await postQueueAdd(interaction.guildId, {
     encoded: entry.encoded,
     requesterId: interaction.user.id,
+    requesterName: interaction.user.globalName ?? interaction.user.username,
+    requesterAvatarUrl: interaction.user.displayAvatarURL({ size: 64 }),
   })
   if (!addR.ok) {
     await replyMusicError(interaction, await addR.text(), true)

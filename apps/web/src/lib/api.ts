@@ -1,4 +1,4 @@
-import type { CommandInfo, PlayerSnapshot } from '@loopify/protocol'
+import type { CommandInfo, PlayerSnapshot } from './contracts.js'
 
 export async function apiFetch(path: string, init?: RequestInit) {
   return fetch(path, {
