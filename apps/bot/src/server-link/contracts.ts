@@ -1,6 +1,5 @@
 import { z } from 'zod'
-
-import { playerSnapshotSchema } from './player.js'
+import { commandInfoSchema, playerSnapshotSchema } from '../types/music.js'
 
 export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({
@@ -33,6 +32,41 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     type: z.literal('playerDestroyed'),
     guildId: z.string(),
     reason: z.string().optional(),
+  }),
+])
+
+export const serverEventPushSchema = z.object({
+  type: z.literal('serverEvent'),
+  event: serverEventSchema,
+})
+
+export const serverToBotMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('gatewaySend'),
+    guildId: z.string(),
+    payload: z.unknown(),
+  }),
+  serverEventPushSchema,
+])
+
+export const botToServerMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('botHello'),
+    token: z.string(),
+  }),
+  z.object({
+    type: z.literal('rawGateway'),
+    payload: z.unknown(),
+  }),
+  z.object({
+    type: z.literal('voiceMembership'),
+    guildId: z.string(),
+    userId: z.string(),
+    voiceChannelId: z.string().nullable(),
+  }),
+  z.object({
+    type: z.literal('commandsManifest'),
+    commands: z.array(commandInfoSchema),
   }),
 ])
 

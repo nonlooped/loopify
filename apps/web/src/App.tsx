@@ -1,13 +1,21 @@
-import { useEffect, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom"
+import { useCallback, useEffect, useState } from "react"
+import { motion, useReducedMotion } from "motion/react"
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from "react-router-dom"
 
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { useAuth } from "@/lib/auth"
 
-import { ThemeToggle } from "./components/theme-toggle.js"
-import { Wordmark } from "./components/wordmark.js"
+import { SmoothScrollProvider } from "./components/home/smooth-scroll-provider.js"
+import { AppFooter } from "./components/shell/app-footer.js"
+import { AppSidebar } from "./components/shell/app-sidebar.js"
+import { AppSidebarDrawer } from "./components/shell/app-sidebar-drawer.js"
+import { AppTopbarMobile } from "./components/shell/app-topbar-mobile.js"
 import { CommandsPage } from "./pages/CommandsPage.js"
 import { ControllerPage } from "./pages/ControllerPage.js"
 import { HomePage } from "./pages/HomePage.js"
@@ -32,10 +40,33 @@ function getInitialTheme(): ThemeMode {
     : "light"
 }
 
+function CommandsLegacyNameRedirect() {
+  const { name } = useParams()
+  if (!name) {
+    return <Navigate to="/commands" replace />
+  }
+  return (
+    <Navigate
+      to={{ pathname: "/commands", search: `?${new URLSearchParams({ cmd: name }).toString()}` }}
+      replace
+    />
+  )
+}
+
+function mainLayoutKey(pathname: string, search: string): string {
+  const isCommands =
+    pathname === "/commands" || pathname.startsWith("/commands/")
+  if (isCommands) {
+    return "/commands"
+  }
+  return pathname + search
+}
+
 export default function App() {
   const location = useLocation()
   const reduceMotion = useReducedMotion()
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const auth = useAuth()
 
   useEffect(() => {
@@ -45,74 +76,55 @@ export default function App() {
     window.localStorage.setItem(THEME_KEY, theme)
   }, [theme])
 
+  // Collapse the mobile drawer any time the route changes so mid-flow taps
+  // through navigation don't strand users behind a still-open panel.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: react-router swaps `location` on every navigation; pathname+search is the signal we care about
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname, location.search])
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === "dark" ? "light" : "dark"))
+  }, [])
+
   return (
-    <div className="relative min-h-svh overflow-x-hidden bg-background text-foreground">
-      <div className="page-grid relative flex min-h-svh flex-col">
-        <header className="border-b border-border">
-          <div className="flex h-14 items-center justify-between gap-4 sm:h-16">
-            <NavLink
-              to="/"
-              aria-label="Loopify home"
-              className="flex min-w-0 shrink items-center text-foreground transition-opacity hover:opacity-80"
-            >
-              <Wordmark size="md" />
-            </NavLink>
+    <SmoothScrollProvider>
+      <TooltipProvider delayDuration={300}>
+      <div className="relative min-h-svh overflow-x-hidden bg-background text-foreground">
+        <AppSidebar
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          isSignedIn={auth.isSignedIn}
+          authReady={!auth.isLoading}
+        />
+        <AppTopbarMobile
+          onOpenMenu={() => setMobileMenuOpen(true)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+        <AppSidebarDrawer
+          open={mobileMenuOpen}
+          onClose={() => setMobileMenuOpen(false)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          isSignedIn={auth.isSignedIn}
+          authReady={!auth.isLoading}
+        />
 
-            <nav
-              aria-label="Primary"
-              className="flex flex-1 items-center gap-4 sm:gap-8"
-            >
-              {[
-                { to: "/", label: "Home" },
-                { to: "/controller", label: "Room" },
-                { to: "/commands", label: "Commands" },
-              ].map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    cn(
-                      "text-sm font-medium transition-colors",
-                      isActive
-                        ? "text-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <ThemeToggle
-                theme={theme}
-                onToggle={() =>
-                  setTheme((current) => (current === "dark" ? "light" : "dark"))
-                }
-              />
-              {!auth.isLoading ? (
-                auth.isSignedIn ? (
-                  <Button asChild size="sm" variant="ghost">
-                    <a href="/auth/logout">Sign out</a>
-                  </Button>
-                ) : (
-                  <Button asChild size="sm" variant="outline">
-                    <NavLink to="/login">Sign in</NavLink>
-                  </Button>
-                )
-              ) : null}
-            </div>
-          </div>
-        </header>
-
-        <AnimatePresence mode="wait">
+        <div className="flex min-h-svh flex-col lg:pl-16">
+          {/*
+            We key `motion.main` on pathname+search so every route swap fully
+            remounts the page tree. An earlier version wrapped this in
+            <AnimatePresence mode="wait">, but the home route's scroll-linked
+            springs (Lenis + useScroll) kept the exit animation from completing
+            and the new page never mounted, leaving stale content visible after
+            navigation. A plain key-based fade-in sidesteps that entirely.
+          */}
           <motion.main
-            key={location.pathname + location.search}
-            className="flex-1 py-10 sm:py-12"
+            key={mainLayoutKey(location.pathname, location.search)}
+            className="page-grid flex-1 py-10 sm:py-12"
             initial={reduceMotion ? false : { opacity: 0 }}
             animate={reduceMotion ? undefined : { opacity: 1 }}
-            exit={reduceMotion ? undefined : { opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             <Routes location={location}>
@@ -120,20 +132,18 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/controller" element={<ControllerPage />} />
               <Route path="/commands" element={<CommandsPage />} />
-              <Route path="/commands/:name" element={<CommandsPage />} />
+              <Route
+                path="/commands/:name"
+                element={<CommandsLegacyNameRedirect />}
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </motion.main>
-        </AnimatePresence>
 
-        <footer className="mt-auto border-t border-border py-6">
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:justify-start">
-            <Wordmark size="sm" accent className="text-foreground" />
-            <span aria-hidden="true" className="hidden h-3 w-px bg-border sm:inline-block" />
-            <span>Music, together.</span>
-          </div>
-        </footer>
+          <AppFooter />
+        </div>
       </div>
-    </div>
+      </TooltipProvider>
+    </SmoothScrollProvider>
   )
 }

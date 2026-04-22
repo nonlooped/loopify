@@ -1,3 +1,7 @@
+import type { Request, Response } from 'express'
+import { Router } from 'express'
+import type { LavalinkManager, Track } from 'lavalink-client'
+import type pino from 'pino'
 import {
   addToQueueBodySchema,
   loopBodySchema,
@@ -6,16 +10,69 @@ import {
   playBodySchema,
   seekBodySchema,
   volumeBodySchema,
-} from '@loopify/protocol'
-import { Hono } from 'hono'
-import type { LavalinkManager, Track } from 'lavalink-client'
-import type pino from 'pino'
+} from '../contracts/types.js'
 import { z } from 'zod'
 import type { Env } from '../config/env.js'
 import { playerToSnapshot } from '../lavalink/snapshot.js'
 import type { BotLink } from '../links/bot-link.js'
+import type { EventHub } from '../links/event-hub.js'
 import { buildSearchQuery } from '../music/query.js'
 import type { VoiceMirror } from '../voice/mirror.js'
+
+type SessionUser = {
+  id: string
+  username?: string
+  globalName?: string
+  avatarUrl?: string
+}
+
+type RequesterInfo = {
+  id: string
+  name?: string
+  avatarUrl?: string
+}
+
+function requesterFromSession(user: SessionUser | undefined): RequesterInfo | null {
+  if (!user?.id) {
+    return null
+  }
+  return {
+    id: user.id,
+    name: user.globalName ?? user.username,
+    avatarUrl: user.avatarUrl,
+  }
+}
+
+function buildRequesterForWrite(
+  req: AuthedRequest,
+  env: Env,
+  explicit: { requesterId: string; requesterName?: string; requesterAvatarUrl?: string },
+): RequesterInfo {
+  if (isBotRequest(req, env)) {
+    return {
+      id: explicit.requesterId,
+      name: explicit.requesterName,
+      avatarUrl: explicit.requesterAvatarUrl,
+    }
+  }
+  const session = requesterFromSession(req.user)
+  return {
+    id: session?.id ?? explicit.requesterId,
+    name: explicit.requesterName ?? session?.name,
+    avatarUrl: explicit.requesterAvatarUrl ?? session?.avatarUrl,
+  }
+}
+type QueryShape = Record<string, string | string[] | undefined>
+
+type AuthedRequest = Request<
+  Record<string, string>,
+  unknown,
+  unknown,
+  QueryShape
+> & {
+  user?: SessionUser
+  isAuthenticated?: () => boolean
+}
 
 export type ApiContext = {
   env: Env
@@ -23,65 +80,165 @@ export type ApiContext = {
   manager: LavalinkManager
   botLink: BotLink
   voiceMirror: VoiceMirror
+  eventHub: EventHub
 }
 
-export function createApiRouter(ctx: ApiContext) {
-  const { env, manager, botLink, voiceMirror, log } = ctx
-  const app = new Hono()
+function isBotRequest(req: AuthedRequest, env: Env): boolean {
+  return req.header('authorization') === `Bearer ${env.botLinkToken}`
+}
 
-  app.use('/*', async (c, next) => {
-    /** Docker/load balancer healthchecks call GET /health without a bearer token */
-    if (
-      (c.req.method === 'GET' || c.req.method === 'HEAD') &&
-      c.req.path === '/health'
-    ) {
-      return c.json({ ok: true })
-    }
-    const auth = c.req.header('authorization')
-    if (auth !== `Bearer ${env.internalApiToken}`) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-    await next()
-  })
+function requireBotOrUser(req: AuthedRequest, res: Response, env: Env): boolean {
+  if (isBotRequest(req, env)) {
+    return true
+  }
+  if (req.isAuthenticated?.() && req.user?.id) {
+    return true
+  }
+  res.status(401).json({ error: 'Unauthorized' })
+  return false
+}
 
-  /** GET/HEAD skip bot; all mutating methods require bot gateway */
-  app.use('/*', async (c, next) => {
-    const method = c.req.method
-    if (method === 'GET' || method === 'HEAD') {
-      return next()
-    }
+function maybeRequireBotForWrite(
+  req: AuthedRequest,
+  res: Response,
+  env: Env,
+  botLink: BotLink,
+): boolean {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return true
+  }
+  if (isBotRequest(req, env)) {
     if (!botLink.botConnected) {
-      return c.json({ error: 'Bot gateway offline', code: 'BOT_OFFLINE' }, 503)
+      res.status(503).json({ error: 'Bot gateway offline', code: 'BOT_OFFLINE' })
+      return false
     }
-    await next()
+    return true
+  }
+  return true
+}
+
+async function requireWebAccess(
+  req: AuthedRequest,
+  res: Response,
+  ctx: ApiContext,
+  guildId: string,
+): Promise<boolean> {
+  if (isBotRequest(req, ctx.env)) {
+    return true
+  }
+  const userId = req.user?.id
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' })
+    return false
+  }
+  const player = ctx.manager.getPlayer(guildId)
+  const botVc = player?.voiceChannelId ?? null
+  const userVc = ctx.voiceMirror.getUserVoice(guildId, userId) ?? null
+  const allowed = !!botVc && !!userVc && botVc === userVc
+  if (!allowed) {
+    res.status(403).json({ error: 'Join the same voice channel as the bot.' })
+    return false
+  }
+  return true
+}
+
+export function createApiRouter(ctx: ApiContext): Router {
+  const { env, manager, botLink, voiceMirror, log, eventHub } = ctx
+  const router = Router()
+
+  router.get('/health', (_req, res) => {
+    res.json({ ok: true })
   })
 
-  app.get('/api/commands', (c) => {
-    return c.json({ commands: botLink.commandsManifest })
+  router.get('/api/me', (req: AuthedRequest, res) => {
+    if (!req.isAuthenticated?.() || !req.user?.id) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+    res.json({
+      userId: req.user.id,
+      username: req.user.username,
+      globalName: req.user.globalName,
+      avatarUrl: req.user.avatarUrl,
+    })
   })
 
-  app.get('/api/players', (c) => {
-    const snaps = []
+  router.get('/api/events', (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (isBotRequest(req, env)) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      Connection: 'keep-alive',
+      'Cache-Control': 'no-cache',
+    })
+    res.write('\n')
+    eventHub.attachSseClient(res)
+  })
+
+  router.get('/api/commands', (_req: AuthedRequest, res) => {
+    res.json({ commands: botLink.commandsManifest })
+  })
+
+  router.get('/api/players', (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    const players = []
     for (const guildId of manager.players.keys()) {
-      const p = manager.getPlayer(guildId)
-      if (p) {
-        snaps.push(playerToSnapshot(p))
+      const player = manager.getPlayer(guildId)
+      if (player) {
+        players.push(playerToSnapshot(player))
       }
     }
-    return c.json({ players: snaps })
+    if (isBotRequest(req, env)) {
+      res.json({ players })
+      return
+    }
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    const filtered = players.filter((p) => {
+      const botVc = p.voiceChannelId
+      const userVc = voiceMirror.getUserVoice(p.guildId, userId) ?? null
+      return !!botVc && !!userVc && botVc === userVc
+    })
+    res.json({ players: filtered })
   })
 
-  app.get('/api/players/:guildId', (c) => {
-    const guildId = c.req.param('guildId')
+  router.get('/api/players/:guildId', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    return c.json({ player: playerToSnapshot(p) })
+    res.json({ player: playerToSnapshot(p) })
   })
 
-  app.get('/api/access/lookup/:userId', (c) => {
-    const userId = c.req.param('userId')
+  router.get('/api/controller', (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (isBotRequest(req, env)) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
     for (const guildId of manager.players.keys()) {
       const p = manager.getPlayer(guildId)
       const botVc = p?.voiceChannelId
@@ -89,115 +246,148 @@ export function createApiRouter(ctx: ApiContext) {
         continue
       }
       if (voiceMirror.getUserVoice(guildId, userId) === botVc) {
-        return c.json({ guildId, voiceChannelId: botVc })
+        return res.json({ player: playerToSnapshot(p) })
       }
     }
-    return c.json({ guildId: null, voiceChannelId: null })
+    res.json({ player: null })
   })
 
-  app.get('/api/access/:guildId/:userId', (c) => {
-    const guildId = c.req.param('guildId')
-    const userId = c.req.param('userId')
+  router.get('/api/access/lookup/:userId', (req: AuthedRequest, res) => {
+    if (!isBotRequest(req, env)) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const userId = req.params.userId
+    for (const guildId of manager.players.keys()) {
+      const p = manager.getPlayer(guildId)
+      const botVc = p?.voiceChannelId
+      if (!p || !botVc) {
+        continue
+      }
+      if (voiceMirror.getUserVoice(guildId, userId) === botVc) {
+        return res.json({ guildId, voiceChannelId: botVc })
+      }
+    }
+    res.json({ guildId: null, voiceChannelId: null })
+  })
+
+  router.get('/api/access/:guildId/:userId', (req: AuthedRequest, res) => {
+    if (!isBotRequest(req, env)) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const guildId = req.params.guildId
+    const userId = req.params.userId
     const p = manager.getPlayer(guildId)
     const botVc = p?.voiceChannelId ?? null
     const userVc = voiceMirror.getUserVoice(guildId, userId) ?? null
     const allowed = !!botVc && !!userVc && botVc === userVc
-    return c.json({
+    res.json({
       allowed,
       voiceChannelId: userVc,
       botVoiceChannelId: botVc,
     })
   })
 
-  app.get('/api/search', async (c) => {
-    const q = c.req.query('query') ?? ''
+  router.get('/api/search', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    const q = typeof req.query.query === 'string' ? req.query.query : ''
     if (!q.trim()) {
-      return c.json({ error: 'Missing query' }, 400)
+      return res.status(400).json({ error: 'Missing query' })
     }
     const node = manager.nodeManager.nodes.get('main')
     if (!node) {
-      return c.json({ error: 'No Lavalink node' }, 503)
+      return res.status(503).json({ error: 'No Lavalink node' })
     }
     try {
-      const res = await node.search(
-        buildSearchQuery(q),
-        { id: 'search' },
-        false,
-      )
-      return c.json(res)
+      const result = await node.search(buildSearchQuery(q), { id: 'search' }, false)
+      res.json(result)
     } catch (e) {
       log.error(e, 'search failed')
-      return c.json(
-        { error: e instanceof Error ? e.message : 'Search failed' },
-        500,
-      )
+      res.status(500).json({ error: 'Search failed' })
     }
   })
 
-  app.post('/api/players/:guildId/join', async (c) => {
-    const guildId = c.req.param('guildId')
-    let body: { voiceChannelId: string; textChannelId?: string }
-    try {
-      body = z
-        .object({
-          voiceChannelId: z.string(),
-          textChannelId: z.string().optional(),
-        })
-        .parse(await c.req.json())
-    } catch {
-      return c.json({ error: 'Invalid body' }, 400)
+  router.post('/api/players/:guildId/join', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
+    const bodyParse = z
+      .object({
+        voiceChannelId: z.string(),
+        textChannelId: z.string().optional(),
+      })
+      .safeParse(req.body)
+    if (!bodyParse.success) {
+      res.status(400).json({ error: 'Invalid body' })
+      return
     }
     let player = manager.getPlayer(guildId)
     if (!player) {
       player = manager.createPlayer({
         guildId,
-        voiceChannelId: body.voiceChannelId,
-        textChannelId: body.textChannelId,
+        voiceChannelId: bodyParse.data.voiceChannelId,
+        textChannelId: bodyParse.data.textChannelId,
         selfDeaf: true,
       })
       await player.connect()
-    } else if (player.voiceChannelId !== body.voiceChannelId) {
-      await player.changeVoiceState({ voiceChannelId: body.voiceChannelId })
+    } else if (player.voiceChannelId !== bodyParse.data.voiceChannelId) {
+      await player.changeVoiceState({ voiceChannelId: bodyParse.data.voiceChannelId })
     }
-    return c.json({ ok: true, player: playerToSnapshot(player) })
+    res.json({ ok: true, player: playerToSnapshot(player) })
   })
 
-  app.post('/api/players/:guildId/play', async (c) => {
-    const guildId = c.req.param('guildId')
-    let body: z.infer<typeof playBodySchema>
-    try {
-      body = playBodySchema.parse(await c.req.json())
-    } catch {
-      return c.json({ error: 'Invalid body' }, 400)
+  router.post('/api/players/:guildId/play', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
     }
-    const requester = { id: body.requesterId }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
+    const body = playBodySchema.safeParse(req.body)
+    if (!body.success) {
+      res.status(400).json({ error: 'Invalid body' })
+      return
+    }
     let player = manager.getPlayer(guildId)
     if (!player) {
       player = manager.createPlayer({
         guildId,
-        voiceChannelId: body.voiceChannelId,
-        textChannelId: body.textChannelId,
+        voiceChannelId: body.data.voiceChannelId,
+        textChannelId: body.data.textChannelId,
         selfDeaf: true,
       })
       await player.connect()
-    } else if (player.voiceChannelId !== body.voiceChannelId) {
-      await player.changeVoiceState({ voiceChannelId: body.voiceChannelId })
+    } else if (player.voiceChannelId !== body.data.voiceChannelId) {
+      await player.changeVoiceState({ voiceChannelId: body.data.voiceChannelId })
     }
-    const result = await player.search(buildSearchQuery(body.query), requester)
+    const requester = buildRequesterForWrite(req, env, {
+      requesterId: body.data.requesterId,
+      requesterName: body.data.requesterName,
+      requesterAvatarUrl: body.data.requesterAvatarUrl,
+    })
+    const result = await player.search(buildSearchQuery(body.data.query), requester)
     if (result.loadType === 'empty' || result.loadType === 'error') {
-      return c.json(
-        {
-          error:
-            'exception' in result && result.exception?.message
-              ? result.exception.message
-              : 'Nothing matched',
-        },
-        400,
-      )
+      res.status(400).json({ error: 'Nothing matched' })
+      return
     }
     const tracks = result.tracks
     if (!tracks.length) {
-      return c.json({ error: 'No tracks' }, 400)
+      res.status(400).json({ error: 'No tracks' })
+      return
     }
     const wasActive = player.playing || player.paused
     if (result.loadType === 'playlist') {
@@ -208,206 +398,316 @@ export function createApiRouter(ctx: ApiContext) {
     if (!wasActive) {
       await player.play()
     }
-    return c.json({ ok: true, player: playerToSnapshot(player) })
+    res.json({ ok: true, player: playerToSnapshot(player) })
   })
 
-  app.post('/api/players/:guildId/pause', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/pause', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    let paused: boolean | undefined
-    try {
-      const raw = await c.req.json().catch(() => ({}))
-      const parsed = pauseBodySchema.safeParse(raw)
-      paused = parsed.success ? parsed.data?.paused : undefined
-    } catch {
-      /* noop */
-    }
+    const parsed = pauseBodySchema.safeParse(req.body ?? {})
+    const paused = parsed.success ? parsed.data?.paused : undefined
+    // lavalink-client mutates `p.paused` locally before the PATCH (via syncPlayerData),
+    // so we can respond with the predicted snapshot without waiting on the REST round trip.
+    let action: Promise<unknown>
     if (paused === undefined) {
-      if (p.paused) {
-        await p.resume()
-      } else {
-        await p.pause()
-      }
+      action = p.paused ? p.resume() : p.pause()
     } else if (paused) {
-      await p.pause()
+      action = p.pause()
     } else {
-      await p.resume()
+      action = p.resume()
     }
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    action.catch((e) => log.error(e, 'pause/resume PATCH failed'))
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/resume', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/resume', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    await p.resume()
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    p.resume().catch((e) => log.error(e, 'resume PATCH failed'))
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/skip', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/skip', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
     await p.skip()
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/seek', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/seek', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    let body: z.infer<typeof seekBodySchema>
-    try {
-      body = seekBodySchema.parse(await c.req.json())
-    } catch {
-      return c.json({ error: 'Invalid body' }, 400)
+    const body = seekBodySchema.safeParse(req.body)
+    if (!body.success) {
+      res.status(400).json({ error: 'Invalid body' })
+      return
     }
-    await p.seek(body.positionMs)
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    await p.seek(body.data.positionMs)
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/volume', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/volume', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    let body: z.infer<typeof volumeBodySchema>
-    try {
-      body = volumeBodySchema.parse(await c.req.json())
-    } catch {
-      return c.json({ error: 'Invalid body' }, 400)
+    const body = volumeBodySchema.safeParse(req.body)
+    if (!body.success) {
+      res.status(400).json({ error: 'Invalid body' })
+      return
     }
-    await p.setVolume(body.volume)
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    p.setVolume(body.data.volume).catch((e) =>
+      log.error(e, 'volume PATCH failed'),
+    )
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/loop', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/loop', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    let body: z.infer<typeof loopBodySchema>
-    try {
-      body = loopBodySchema.parse(await c.req.json())
-    } catch {
-      return c.json({ error: 'Invalid body' }, 400)
+    const body = loopBodySchema.safeParse(req.body)
+    if (!body.success) {
+      res.status(400).json({ error: 'Invalid body' })
+      return
     }
-    await p.setRepeatMode(body.mode)
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    p.setRepeatMode(body.data.mode).catch((e) =>
+      log.error(e, 'loop PATCH failed'),
+    )
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/shuffle', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/shuffle', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    await p.queue.shuffle()
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    // queue.shuffle reorders this.tracks synchronously before persisting, so
+    // playerToSnapshot below already reflects the new order.
+    p.queue.shuffle().catch((e) => log.error(e, 'shuffle save failed'))
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/clear', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/clear', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
     await p.queue.splice(0, p.queue.tracks.length)
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/queue', async (c) => {
-    const guildId = c.req.param('guildId')
-    let body: z.infer<typeof addToQueueBodySchema>
-    try {
-      body = addToQueueBodySchema.parse(await c.req.json())
-    } catch {
-      return c.json({ error: 'Invalid body' }, 400)
+  router.post('/api/players/:guildId/queue', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
+    const body = addToQueueBodySchema.safeParse(req.body)
+    if (!body.success) {
+      return res.status(400).json({ error: 'Invalid body' })
     }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
-    const requester = { id: body.requesterId }
+    const requester = buildRequesterForWrite(req, env, {
+      requesterId: body.data.requesterId,
+      requesterName: body.data.requesterName,
+      requesterAvatarUrl: body.data.requesterAvatarUrl,
+    })
     let track: Track
     try {
-      track = await p.node.decode.singleTrack(body.encoded, requester)
+      track = await p.node.decode.singleTrack(body.data.encoded, requester)
     } catch (e) {
       log.error(e, 'failed to decode track')
-      return c.json({ error: 'Invalid encoded track' }, 400)
+      return res.status(400).json({ error: 'Invalid encoded track' })
     }
     const wasActive = p.playing || p.paused
-    await p.queue.add(track, body.position)
+    await p.queue.add(track, body.data.position)
     if (!wasActive) {
       await p.play()
     }
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.delete('/api/players/:guildId/queue/:index', async (c) => {
-    const guildId = c.req.param('guildId')
-    const idx = parseInt(c.req.param('index'), 10)
+  router.delete('/api/players/:guildId/queue/:index', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
+    const idx = parseInt(req.params.index, 10)
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
     if (Number.isNaN(idx) || idx < 0) {
-      return c.json({ error: 'Bad index' }, 400)
+      return res.status(400).json({ error: 'Bad index' })
     }
     await p.queue.remove(idx)
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/queue/move', async (c) => {
-    const guildId = c.req.param('guildId')
-    let body: z.infer<typeof moveQueueBodySchema>
-    try {
-      body = moveQueueBodySchema.parse(await c.req.json())
-    } catch {
-      return c.json({ error: 'Invalid body' }, 400)
+  router.post('/api/players/:guildId/queue/move', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
+    const body = moveQueueBodySchema.safeParse(req.body)
+    if (!body.success) {
+      return res.status(400).json({ error: 'Invalid body' })
     }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
     const { queue } = p
     const len = queue.tracks.length
-    if (body.from < 0 || body.to < 0 || body.from >= len || body.to >= len) {
-      return c.json({ error: 'Invalid positions' }, 400)
+    if (
+      body.data.from < 0 ||
+      body.data.to < 0 ||
+      body.data.from >= len ||
+      body.data.to >= len
+    ) {
+      return res.status(400).json({ error: 'Invalid positions' })
     }
-    if (body.from === body.to) {
-      return c.json({ ok: true, player: playerToSnapshot(p) })
+    if (body.data.from === body.data.to) {
+      return res.json({ ok: true, player: playerToSnapshot(p) })
     }
-    const removed = await queue.splice(body.from, 1)
+    const removed = await queue.splice(body.data.from, 1)
     const moved = Array.isArray(removed) ? removed[0] : removed
     if (!moved) {
-      return c.json({ error: 'Move failed' }, 400)
+      return res.status(400).json({ error: 'Move failed' })
     }
-    const insertPos = body.to > body.from ? body.to - 1 : body.to
+    const insertPos = body.data.to > body.data.from ? body.data.to - 1 : body.data.to
     await queue.splice(insertPos, 0, moved as Track)
-    return c.json({ ok: true, player: playerToSnapshot(p) })
+    res.json({ ok: true, player: playerToSnapshot(p) })
   })
 
-  app.post('/api/players/:guildId/stop', async (c) => {
-    const guildId = c.req.param('guildId')
+  router.post('/api/players/:guildId/stop', async (req: AuthedRequest, res) => {
+    if (!requireBotOrUser(req, res, env)) {
+      return
+    }
+    if (!maybeRequireBotForWrite(req, res, env, botLink)) {
+      return
+    }
+    const guildId = req.params.guildId
+    if (!(await requireWebAccess(req, res, ctx, guildId))) {
+      return
+    }
     const p = manager.getPlayer(guildId)
     if (!p) {
-      return c.json({ error: 'No player' }, 404)
+      return res.status(404).json({ error: 'No player' })
     }
     await p.destroy()
-    return c.json({ ok: true })
+    res.json({ ok: true })
   })
 
-  return app
+  return router
 }

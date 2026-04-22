@@ -1,9 +1,9 @@
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { CommandInfo, CommandOption } from '@loopify/protocol'
 import { logScope } from '../../lib/logger.js'
 import type { BotClient, CommandMeta } from '../../types/commands.js'
+import type { CommandInfo, CommandOption } from '../../types/music.js'
 
 type RawCommandOption = {
   name: string

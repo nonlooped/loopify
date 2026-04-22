@@ -2,15 +2,21 @@
   "name": "loopify-monorepo",
   "license": "MIT",
   "scripts": {
-    "build:protocol": "pnpm --filter @loopify/protocol build",
-    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
-    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "dev": "dotenv -e .env -- concurrently -k --kill-others-on-fail -n lavalink,server,bot,web -c magenta,cyan,green,red \"pnpm run dev:lavalink\" \"pnpm run dev:server\" \"pnpm run dev:bot\" \"pnpm run dev:web\"",
+    "dev:lavalink": "docker compose up lavalink",
+    "dev:server": "dotenv -e .env -- pnpm --filter server dev",
+    "dev:bot": "dotenv -e .env -- pnpm --filter bot dev",
+    "dev:web": "dotenv -e .env -- pnpm --filter web dev",
     "check": "biome check .",
     "format": "biome format --write .",
     "lint": "biome lint ."
   },
   "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319",
   "devDependencies": {
-    "@biomejs/biome": "2.4.12"
+    "@biomejs/biome": "2.4.12",
+    "concurrently": "^9.2.1",
+    "dotenv-cli": "^11.0.0"
   }
 }

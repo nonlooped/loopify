@@ -1,10 +1,11 @@
-import type { ServerEvent } from '@loopify/protocol'
-import { serverToBotMessageSchema } from '@loopify/protocol'
 import type { Guild } from 'discord.js'
 import WebSocket from 'ws'
-
 import { assertRequiredEnv } from '../config/env.js'
 import type { BotClient } from '../types/commands.js'
+import {
+  type ServerEvent,
+  serverToBotMessageSchema,
+} from './contracts.js'
 
 function wsEndpoint() {
   const base = assertRequiredEnv('MUSIC_SERVER_URL').replace(/\/$/, '')
@@ -26,20 +27,16 @@ export class MusicServerConnection {
   }
 
   connect() {
-    const url = wsEndpoint()
-    const ws = new WebSocket(url)
+    const ws = new WebSocket(wsEndpoint())
     this.ws = ws
 
     ws.on('open', () => {
       ws.send(
         JSON.stringify({
           type: 'botHello',
-          token: assertRequiredEnv('INTERNAL_API_TOKEN'),
+          token: assertRequiredEnv('BOT_LINK_TOKEN'),
         }),
       )
-      // Share the slash-command manifest so the music server can expose it
-      // to the web (e.g. the public /commands page). Re-sent on every
-      // reconnect because the server's cache is in-memory only.
       const manifest = this.client.commandsManifest ?? []
       ws.send(
         JSON.stringify({
@@ -50,10 +47,6 @@ export class MusicServerConnection {
       for (const p of this.pending.splice(0)) {
         ws.send(p)
       }
-      // The server's VoiceMirror lives in memory and only learns about
-      // members via voiceStateUpdate, which never fires for users already
-      // in voice when the bot (or music server) started. Re-seed it on
-      // every (re)connection so the controller can resolve who is in VC.
       this.sendAllVoiceSnapshots()
     })
 
@@ -76,7 +69,7 @@ export class MusicServerConnection {
           }
         }
       } catch {
-        /* ignore */
+        // ignore invalid payloads
       }
     })
 
@@ -101,11 +94,12 @@ export class MusicServerConnection {
   }
 
   sendRawGateway(payload: unknown) {
-    const msg = JSON.stringify({
-      type: 'rawGateway',
-      payload,
-    } satisfies { type: 'rawGateway'; payload: unknown })
-    this.rawSend(msg)
+    this.rawSend(
+      JSON.stringify({
+        type: 'rawGateway',
+        payload,
+      }),
+    )
   }
 
   sendVoiceMembership(
@@ -113,17 +107,16 @@ export class MusicServerConnection {
     userId: string,
     voiceChannelId: string | null,
   ) {
-    const msg = JSON.stringify({
-      type: 'voiceMembership',
-      guildId,
-      userId,
-      voiceChannelId,
-    })
-    this.rawSend(msg)
+    this.rawSend(
+      JSON.stringify({
+        type: 'voiceMembership',
+        guildId,
+        userId,
+        voiceChannelId,
+      }),
+    )
   }
 
-  /** Push every cached voice state for this guild. Used to backfill the
-   *  music server when a guild becomes available or the link reconnects. */
   sendVoiceSnapshotForGuild(guild: Guild) {
     for (const [userId, vs] of guild.voiceStates.cache) {
       if (vs.channelId) {
@@ -162,9 +155,6 @@ export function initMusicServerConnection(
   client.on('voiceStateUpdate', (_old, newS) => {
     c.sendVoiceMembership(newS.guild.id, newS.id, newS.channelId)
   })
-  // discord.js voiceStateUpdate only fires on changes, so users already in
-  // a channel before the bot logged in (or before a guild loaded) would
-  // never appear in the server's mirror. Backfill on guild availability.
   client.on('guildCreate', (guild) => {
     c.sendVoiceSnapshotForGuild(guild)
   })

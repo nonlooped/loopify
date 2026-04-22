@@ -4,6 +4,8 @@ services:
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4-alpine
     restart: unless-stopped
+    ports:
+      - "2333:2333"
     volumes:
       - ./infra/application.yml:/opt/Lavalink/application.yml:ro
     environment:
@@ -30,7 +32,14 @@ services:
       LAVALINK_HOST: lavalink
       LAVALINK_PORT: "2333"
       LAVALINK_SERVER_PASSWORD: ${LAVALINK_SERVER_PASSWORD:?Set LAVALINK_SERVER_PASSWORD in .env}
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN in .env}
+      BOT_LINK_TOKEN: ${BOT_LINK_TOKEN:?Set BOT_LINK_TOKEN in .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL in .env}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:?Set DISCORD_CLIENT_ID in .env}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:?Set DISCORD_CLIENT_SECRET in .env}
+      DISCORD_OAUTH_REDIRECT_URI: ${DISCORD_OAUTH_REDIRECT_URI:?Set DISCORD_OAUTH_REDIRECT_URI in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+    ports:
+      - "4000:4000"
     depends_on:
       lavalink:
         condition: service_healthy
@@ -58,28 +67,7 @@ services:
       CLIENT_ID: ${CLIENT_ID:?Set CLIENT_ID in .env}
       GUILD_ID: ${GUILD_ID:-}
       MUSIC_SERVER_URL: http://server:4000
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN in .env}
-    depends_on:
-      server:
-        condition: service_healthy
-
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    restart: unless-stopped
-    environment:
-      NODE_ENV: production
-      PORT: "8080"
-      MUSIC_SERVER_URL: http://server:4000
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN in .env}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL in .env}
-      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:?Set DISCORD_CLIENT_ID in .env}
-      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:?Set DISCORD_CLIENT_SECRET in .env}
-      DISCORD_OAUTH_REDIRECT_URI: ${DISCORD_OAUTH_REDIRECT_URI:?Set DISCORD_OAUTH_REDIRECT_URI in .env}
-      WEB_SESSION_SECRET: ${WEB_SESSION_SECRET:?Set WEB_SESSION_SECRET in .env}
-    ports:
-      - "8080:8080"
+      BOT_LINK_TOKEN: ${BOT_LINK_TOKEN:?Set BOT_LINK_TOKEN in .env}
     depends_on:
       server:
         condition: service_healthy

@@ -1,4 +1,4 @@
-import type { PlayerSnapshot } from '@loopify/protocol'
+import type { PlayerSnapshot } from '../types/music.js'
 import { SlashCommandBuilder } from 'discord.js'
 
 import { AppEmojis } from '../lib/app-emojis.js'
@@ -52,6 +52,8 @@ export async function execute(
       voiceChannelId: voice.voiceChannel.id,
       textChannelId: textCh?.id,
       requesterId: interaction.user.id,
+      requesterName: interaction.user.globalName ?? interaction.user.username,
+      requesterAvatarUrl: interaction.user.displayAvatarURL({ size: 64 }),
     })
     if (!r.ok) {
       let msg = r.statusText
