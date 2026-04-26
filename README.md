@@ -13,38 +13,43 @@ Personal desktop music app for searching, resolving, queueing, importing, and pl
 ## Commands
 
 ```bash
-npm install
-npm run dev
-npm run typecheck
-npm run build
-npm run dist:win
+pnpm install
+pnpm run dev
+pnpm run typecheck
+pnpm run build
+pnpm run dist:win
 ```
 
 If native packages were installed with lifecycle scripts disabled, rebuild them:
 
 ```bash
-npm rebuild electron better-sqlite3
+pnpm rebuild electron better-sqlite3
 ```
 
 ## Runtime Prerequisites
 
-Install this on the host system:
+You must install these on the host system before running Loopify:
+
+### yt-dlp
 
 ```bash
 yt-dlp --version
 ```
 
-`mpv` is bundled for packaged builds. For development, Loopify resolves `mpv` in this order:
+### mpv
+
+Loopify requires `mpv` for audio playback. It resolves `mpv` in this order:
 
 1. `LOOPIFY_MPV_PATH` environment variable
 2. Bundled binary from `resources/binaries/mpv/<platform>-<arch>/`
 3. `settings.mpvPath` from the app settings
 
-To ship Windows installer builds, provide:
+**Bring your own mpv:** Download from [mpv.io](https://mpv.io) and place the executable at:
+- Windows: `resources\binaries\mpv\win32-x64\mpv.exe`
+- macOS: `resources/binaries/mpv/darwin-arm64/mpv` or `darwin-x64/mpv`
+- Linux: `resources/binaries/mpv/linux-x64/mpv`
 
-- `resources/binaries/mpv/win32-x64/mpv.exe`
-
-Linux/WSL also needs Electron's shared-library dependencies. If Electron fails with `libnss3.so`, install the matching OS package, usually `libnss3`.
+Or simply ensure `mpv` (or `mpv.exe` on Windows) is available in your system PATH.
 
 ## Project Shape
 
