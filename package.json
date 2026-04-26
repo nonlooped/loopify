@@ -61,7 +61,10 @@
       {
         "from": "resources/binaries/",
         "to": "binaries",
-        "filter": ["**/*", "!*.exe"]
+        "filter": [
+          "**/*",
+          "!*.exe"
+        ]
       }
     ],
     "win": {

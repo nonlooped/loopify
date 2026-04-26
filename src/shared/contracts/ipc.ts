@@ -93,6 +93,7 @@ export type LoopifyApi = {
   settings: {
     get: () => Promise<AppSettings>
     update: (settings: Partial<AppSettings>) => Promise<AppSettings>
+    getVersion: () => Promise<string>
   }
 }
 
@@ -136,4 +137,5 @@ export const ipcChannels = {
   lyricsGetForTrack: "lyrics:get-for-track",
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
+  settingsGetVersion: "settings:get-version",
 } as const

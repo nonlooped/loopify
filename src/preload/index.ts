@@ -85,6 +85,7 @@ const api: LoopifyApi = {
   settings: {
     get: () => ipcRenderer.invoke(ipcChannels.settingsGet),
     update: (settings) => ipcRenderer.invoke(ipcChannels.settingsUpdate, settings),
+    getVersion: () => ipcRenderer.invoke(ipcChannels.settingsGetVersion),
   },
 }
 

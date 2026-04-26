@@ -6,8 +6,6 @@ import { TextField } from "@/components/TextField"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { KEYBOARD_SHORTCUTS_HELP } from "@/lib/keyboard-shortcuts"
 
-const APP_VERSION = "0.1.0"
-
 interface SettingsModalProps {
   isOpen: boolean
   onClose: () => void
@@ -15,6 +13,7 @@ interface SettingsModalProps {
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [version, setVersion] = useState<string>("")
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -22,10 +21,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const backdropRef = useRef<HTMLDivElement>(null)
   const { shouldRender, showOverlay, onBackdropTransitionEnd } = useOverlayPresence(isOpen)
 
-  // Fetch settings when opened
+  // Fetch settings and version when opened
   useEffect(() => {
     if (!isOpen) return
     void window.loopify.settings.get().then(setSettings).catch(console.error)
+    void window.loopify.settings.getVersion().then(setVersion).catch(console.error)
   }, [isOpen])
 
   useEffect(() => {
@@ -441,7 +441,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
               <div className="border-t border-border px-6 py-4 sm:px-8">
                 <div className="flex items-center justify-between">
-                  <span className="type-meta text-muted">Loopify v{APP_VERSION}</span>
+                  <span className="type-meta text-muted">Loopify v{version}</span>
                   <div className="flex items-center gap-3">
                     <Button type="submit" size="lg" disabled={isSaving}>
                       {isSaving ? (

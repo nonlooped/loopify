@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { type BrowserWindow, ipcMain } from "electron"
 import { z } from "zod"
 import { ipcChannels } from "../../shared/contracts/ipc"
@@ -16,6 +16,8 @@ import type { LyricsService } from "../lyrics/lyrics-service"
 import type { PlayerService } from "../player/player-service"
 import type { DiscordPresenceService } from "../presence/discord-presence-service"
 import type { ResolverService } from "../resolver/resolver-service"
+
+const appVersion = JSON.parse(readFileSync("./package.json", "utf-8")).version
 
 type HandlerDeps = {
   window: BrowserWindow
@@ -370,6 +372,7 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   )
 
   ipcMain.handle(ipcChannels.settingsGet, () => deps.settings.get())
+  ipcMain.handle(ipcChannels.settingsGetVersion, () => appVersion)
   ipcMain.handle(ipcChannels.settingsUpdate, (_event, patch) => {
     const parsed = z
       .object({
