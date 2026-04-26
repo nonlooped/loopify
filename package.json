@@ -10,6 +10,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "dist:win": "pnpm run build && electron-builder --win nsis",
+    "dist:mac": "pnpm run build && electron-builder --mac dmg",
     "dist:win:dir": "pnpm run build && electron-builder --win dir",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
