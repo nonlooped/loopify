@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
-import { ipcChannels, type LoopifyApi } from "../shared/contracts/ipc"
+import { ipcChannels, type LoopifyApi, type UpdateStatus } from "../shared/contracts/ipc"
 import type { ImportJob, PlayerState, QueueItem, Track } from "../shared/types/music"
 
 const api: LoopifyApi = {
@@ -86,6 +86,16 @@ const api: LoopifyApi = {
     get: () => ipcRenderer.invoke(ipcChannels.settingsGet),
     update: (settings) => ipcRenderer.invoke(ipcChannels.settingsUpdate, settings),
     getVersion: () => ipcRenderer.invoke(ipcChannels.settingsGetVersion),
+    getUpdateStatus: () => ipcRenderer.invoke(ipcChannels.settingsGetUpdateStatus),
+    checkForUpdates: () => ipcRenderer.invoke(ipcChannels.settingsCheckForUpdates),
+    downloadUpdate: () => ipcRenderer.invoke(ipcChannels.settingsDownloadUpdate),
+    installUpdate: () => ipcRenderer.invoke(ipcChannels.settingsInstallUpdate),
+    onUpdateStatusChange: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, status: UpdateStatus): void =>
+        listener(status)
+      ipcRenderer.on(ipcChannels.settingsUpdateStatusChanged, wrapped)
+      return () => ipcRenderer.off(ipcChannels.settingsUpdateStatusChanged, wrapped)
+    },
   },
 }
 

@@ -19,6 +19,7 @@ import { LyricsService } from "./lyrics/lyrics-service"
 import { PlayerService } from "./player/player-service"
 import { DISCORD_APPLICATION_ID, DiscordPresenceService } from "./presence/discord-presence-service"
 import { ResolverService } from "./resolver/resolver-service"
+import { UpdaterService } from "./updater/updater-service"
 
 let player: PlayerService | null = null
 let presence: DiscordPresenceService | null = null
@@ -81,6 +82,7 @@ async function createWindow(): Promise<void> {
   const resolver = new ResolverService(settings, resolverCache)
   const lyrics = new LyricsService(new LyricsCacheRepository(db), () => settings.get())
   player = new PlayerService(settings)
+  const updater = new UpdaterService()
   presence = new DiscordPresenceService({
     applicationId: DISCORD_APPLICATION_ID,
     enabled: settings.get().discordPresenceEnabled,
@@ -118,6 +120,15 @@ async function createWindow(): Promise<void> {
     lyrics,
     settings,
     presence,
+    updater,
+  })
+
+  updater.subscribe((status) => {
+    try {
+      window.webContents.send(ipcChannels.settingsUpdateStatusChanged, status)
+    } catch {
+      /* closed window */
+    }
   })
 
   window.on("closed", shutdownPlayer)

@@ -34,6 +34,24 @@ export type ImportStartInput = {
   targetPlaylistId: string | null
 }
 
+export type UpdateStatusPhase =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "up-to-date"
+  | "unsupported"
+  | "error"
+
+export type UpdateStatus = {
+  phase: UpdateStatusPhase
+  currentVersion: string
+  availableVersion: string | null
+  progressPercent: number | null
+  message: string | null
+}
+
 export type LoopifyApi = {
   player: {
     getState: () => Promise<PlayerState>
@@ -94,6 +112,11 @@ export type LoopifyApi = {
     get: () => Promise<AppSettings>
     update: (settings: Partial<AppSettings>) => Promise<AppSettings>
     getVersion: () => Promise<string>
+    getUpdateStatus: () => Promise<UpdateStatus>
+    checkForUpdates: () => Promise<UpdateStatus>
+    downloadUpdate: () => Promise<UpdateStatus>
+    installUpdate: () => Promise<void>
+    onUpdateStatusChange: (listener: (status: UpdateStatus) => void) => () => void
   }
 }
 
@@ -138,4 +161,9 @@ export const ipcChannels = {
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
   settingsGetVersion: "settings:get-version",
+  settingsGetUpdateStatus: "settings:get-update-status",
+  settingsCheckForUpdates: "settings:check-for-updates",
+  settingsDownloadUpdate: "settings:download-update",
+  settingsInstallUpdate: "settings:install-update",
+  settingsUpdateStatusChanged: "settings:update-status-changed",
 } as const

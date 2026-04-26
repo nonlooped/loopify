@@ -1,5 +1,6 @@
 import { Loader2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import type { UpdateStatus } from "src/shared/contracts/ipc"
 import type { AppSettings } from "src/shared/types/music"
 import { Button } from "@/components/Button"
 import { TextField } from "@/components/TextField"
@@ -14,7 +15,9 @@ interface SettingsModalProps {
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [version, setVersion] = useState<string>("")
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -26,12 +29,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (!isOpen) return
     void window.loopify.settings.get().then(setSettings).catch(console.error)
     void window.loopify.settings.getVersion().then(setVersion).catch(console.error)
+    const unsubscribe = window.loopify.settings.onUpdateStatusChange(setUpdateStatus)
+    void window.loopify.settings.getUpdateStatus().then(setUpdateStatus).catch(console.error)
+    void window.loopify.settings.checkForUpdates().then(setUpdateStatus).catch(console.error)
+    return unsubscribe
   }, [isOpen])
 
   useEffect(() => {
     if (shouldRender) return
     setSettings(null)
+    setUpdateStatus(null)
     setSaveMessage(null)
+    setIsInstallingUpdate(false)
     setShowAdvanced(false)
     setShowShortcuts(false)
   }, [shouldRender])
@@ -109,6 +118,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setSaveMessage("Failed to save settings")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleUpdateAction = async () => {
+    if (!updateStatus) return
+
+    try {
+      if (updateStatus.phase === "available") {
+        await window.loopify.settings.downloadUpdate()
+        return
+      }
+
+      if (updateStatus.phase === "downloaded") {
+        setIsInstallingUpdate(true)
+        await window.loopify.settings.installUpdate()
+        return
+      }
+
+      if (updateStatus.phase === "error" || updateStatus.phase === "up-to-date") {
+        await window.loopify.settings.checkForUpdates()
+      }
+    } catch (err) {
+      console.error("Failed to update Loopify:", err)
+      setIsInstallingUpdate(false)
     }
   }
 
@@ -441,8 +474,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
               <div className="border-t border-border px-6 py-4 sm:px-8">
                 <div className="flex items-center justify-between">
-                  <span className="type-meta text-muted">Loopify v{version}</span>
+                  <div className="min-w-0">
+                    <span className="type-meta text-muted">Loopify v{version}</span>
+                    {updateStatus ? (
+                      <p className="type-meta mt-1 text-subtle" aria-live="polite">
+                        {formatUpdateStatus(updateStatus)}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="flex items-center gap-3">
+                    {renderUpdateButton(updateStatus, isInstallingUpdate, handleUpdateAction)}
                     <Button type="submit" size="lg" disabled={isSaving}>
                       {isSaving ? (
                         <span className="flex items-center gap-2">
@@ -471,4 +512,80 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       </div>
     </div>
   )
+}
+
+function formatUpdateStatus(status: UpdateStatus): string {
+  if (status.phase === "checking") return "Checking for updates"
+  if (status.phase === "available" && status.availableVersion) {
+    return `Version ${status.availableVersion} is available`
+  }
+  if (status.phase === "downloading") {
+    const progress = status.progressPercent ?? 0
+    return `Downloading version ${status.availableVersion ?? "update"}, ${progress}%`
+  }
+  if (status.phase === "downloaded" && status.availableVersion) {
+    return `Version ${status.availableVersion} is ready to install`
+  }
+  if (status.phase === "up-to-date") return "You are up to date"
+  if (status.phase === "unsupported") return status.message ?? "Updates are unavailable here"
+  if (status.phase === "error") return status.message ?? "Update check failed"
+  return ""
+}
+
+function renderUpdateButton(
+  status: UpdateStatus | null,
+  isInstallingUpdate: boolean,
+  onClick: () => void
+) {
+  if (!status) return null
+
+  if (status.phase === "available") {
+    return (
+      <Button type="button" variant="outline" size="lg" onClick={onClick}>
+        Update to {status.availableVersion ?? "latest"}
+      </Button>
+    )
+  }
+
+  if (status.phase === "downloading") {
+    return (
+      <Button type="button" variant="outline" size="lg" disabled>
+        <span className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Downloading {status.progressPercent ?? 0}%
+        </span>
+      </Button>
+    )
+  }
+
+  if (status.phase === "downloaded") {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        onClick={onClick}
+        disabled={isInstallingUpdate}
+      >
+        {isInstallingUpdate ? (
+          <span className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Restarting...
+          </span>
+        ) : (
+          "Restart to Update"
+        )}
+      </Button>
+    )
+  }
+
+  if (status.phase === "error") {
+    return (
+      <Button type="button" variant="ghost" size="lg" onClick={onClick}>
+        Try Again
+      </Button>
+    )
+  }
+
+  return null
 }

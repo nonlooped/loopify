@@ -14,11 +14,18 @@ jobs:
           - os: windows-latest
             artifact_name: loopify-windows-installer
             build_command: pnpm run dist:win
-            artifact_path: release/*.exe
+            artifact_path: |
+              release/*.exe
+              release/*.blockmap
+              release/latest*.yml
           - os: macos-latest
             artifact_name: loopify-macos-installer
             build_command: pnpm run dist:mac
-            artifact_path: release/*.dmg
+            artifact_path: |
+              release/*.dmg
+              release/*.zip
+              release/*.blockmap
+              release/latest*.yml
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write

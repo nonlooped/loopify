@@ -16,6 +16,7 @@ import type { LyricsService } from "../lyrics/lyrics-service"
 import type { PlayerService } from "../player/player-service"
 import type { DiscordPresenceService } from "../presence/discord-presence-service"
 import type { ResolverService } from "../resolver/resolver-service"
+import type { UpdaterService } from "../updater/updater-service"
 
 type HandlerDeps = {
   window: BrowserWindow
@@ -28,6 +29,7 @@ type HandlerDeps = {
   lyrics: LyricsService
   settings: SettingsRepository
   presence: DiscordPresenceService
+  updater: UpdaterService
 }
 
 const nonEmptyString = z.string().trim().min(1)
@@ -371,6 +373,12 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
 
   ipcMain.handle(ipcChannels.settingsGet, () => deps.settings.get())
   ipcMain.handle(ipcChannels.settingsGetVersion, () => app.getVersion())
+  ipcMain.handle(ipcChannels.settingsGetUpdateStatus, () => deps.updater.getStatus())
+  ipcMain.handle(ipcChannels.settingsCheckForUpdates, () => deps.updater.checkForUpdates())
+  ipcMain.handle(ipcChannels.settingsDownloadUpdate, () => deps.updater.downloadUpdate())
+  ipcMain.handle(ipcChannels.settingsInstallUpdate, () => {
+    deps.updater.installUpdate()
+  })
   ipcMain.handle(ipcChannels.settingsUpdate, (_event, patch) => {
     const parsed = z
       .object({
