@@ -1,7 +1,9 @@
 import { app } from "electron"
-import { type AppUpdater, autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater"
+import electronUpdater, { type AppUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater"
 import type { UpdateStatus } from "../../shared/contracts/ipc"
 import { createUpdateStatus, isUpdaterSupported, normalizeVersion } from "./update-status"
+
+const { autoUpdater } = electronUpdater
 
 type UpdateStatusListener = (status: UpdateStatus) => void
 
