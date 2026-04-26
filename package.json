@@ -94,8 +94,7 @@
       "provider": "github",
       "owner": "unloopedmido",
       "repo": "loopify",
-      "releaseType": "release",
-      "token": "${GH_TOKEN}"
+      "releaseType": "release"
     }
   }
 }
