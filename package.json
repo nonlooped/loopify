@@ -1,6 +1,6 @@
 {
   "name": "loopify-desktop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Personal desktop music app for resolving, queueing, and playing online sources.",
   "author": "Loopify",
   "type": "module",
@@ -28,6 +28,7 @@
     "drizzle-orm": "^0.45.2",
     "electron-updater": "^6.8.3",
     "lucide-react": "^0.468.0",
+    "ms": "^2.1.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "spotify-url-info": "^3.3.0",
