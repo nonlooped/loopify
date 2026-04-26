@@ -1,0 +1,82 @@
+{
+  "name": "loopify-desktop",
+  "version": "0.1.0",
+  "description": "Personal desktop music app for resolving, queueing, and playing online sources.",
+  "type": "module",
+  "main": "out/main/app.js",
+  "scripts": {
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "verify:mpv": "node ./scripts/verify-bundled-mpv.mjs",
+    "dist:win": "npm run verify:mpv && npm run build && electron-builder --win nsis",
+    "dist:win:dir": "npm run verify:mpv && npm run build && electron-builder --win dir",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@xhayper/discord-rpc": "^1.3.4",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "spotify-url-info": "^3.3.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
+    "@electron/rebuild": "^4.0.4",
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.17",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "drizzle-kit": "^0.30.6",
+    "electron": "^39.8.5",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.2"
+  },
+  "build": {
+    "appId": "com.loopify.desktop",
+    "productName": "Loopify",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/binaries/",
+        "to": "binaries"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Loopify-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

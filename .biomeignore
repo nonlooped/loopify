@@ -1,0 +1,7 @@
+.agents
+dist
+out
+node_modules
+.vite
+data
+styled-system

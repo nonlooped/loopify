@@ -1,0 +1,335 @@
+import {
+  CheckCircle2,
+  Download,
+  Heart,
+  ListMusic,
+  PanelRightClose,
+  PanelRightOpen,
+  Play,
+  X,
+} from "lucide-react"
+import { memo, useEffect, useState } from "react"
+import type { QueueItem, Track } from "src/shared/types/music"
+import { EmptyState } from "@/components/EmptyState"
+import { IconButton } from "@/components/IconButton"
+import { cn } from "@/lib/cn"
+import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
+import { downloadTitle } from "@/lib/music-format"
+import { formatModShortcut } from "@/lib/shortcut"
+
+interface QueueOverlayProps {
+  compact?: boolean
+  isOpen: boolean
+  queue: QueueItem[]
+  currentQueueItemId: string | null
+  onPlay: (item: QueueItem) => void
+  onRemove: (id: string) => void
+  onClear: () => void
+  onToggle: () => void
+  onToggleLikeTrack: (track: Track) => void
+  onDownloadTrack: (track: Track) => void
+  onRemoveTrackDownload: (track: Track) => void
+}
+
+function QueueOverlayImpl({
+  compact = false,
+  isOpen,
+  queue,
+  currentQueueItemId,
+  onPlay,
+  onRemove,
+  onClear,
+  onToggle,
+  onToggleLikeTrack,
+  onDownloadTrack,
+  onRemoveTrackDownload,
+}: QueueOverlayProps) {
+  const [confirmClear, setConfirmClear] = useState(false)
+
+  useEffect(() => {
+    if (!confirmClear) return
+    const t = window.setTimeout(() => setConfirmClear(false), 3000)
+    return () => window.clearTimeout(t)
+  }, [confirmClear])
+
+  useEffect(() => {
+    if (!isOpen) setConfirmClear(false)
+  }, [isOpen])
+
+  const handleClear = () => {
+    if (queue.length === 0) return
+    if (!confirmClear) {
+      setConfirmClear(true)
+      return
+    }
+    setConfirmClear(false)
+    onClear()
+  }
+
+  return (
+    <>
+      {compact && isOpen ? (
+        <button
+          type="button"
+          className="cursor-pointer absolute inset-0 z-40 bg-canvas/24 backdrop-blur-[2px]"
+          aria-label="Close queue"
+          onClick={onToggle}
+        />
+      ) : null}
+      <aside
+        className={cn(
+          "z-40 flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-border bg-surface/95 shadow-panel backdrop-blur-3xl motion-reduce:transition-none",
+          compact
+            ? "absolute inset-y-0 right-0 w-[min(24rem,calc(100vw-5.5rem))] max-w-full transition-[transform,opacity] duration-300 ease-out-quart"
+            : "transition-[width] duration-300 ease-out-quart",
+          compact
+            ? isOpen
+              ? "translate-x-0 opacity-100"
+              : "pointer-events-none translate-x-full opacity-0"
+            : isOpen
+              ? "w-80 @[920px]/shell:w-96"
+              : "w-20"
+        )}
+        aria-label="Playback queue"
+      >
+        <div className="px-2 pb-3 pt-6">
+          <button
+            type="button"
+            onClick={onToggle}
+            title={isOpen ? "Collapse queue" : `Expand queue (${formatModShortcut("L")})`}
+            aria-label={isOpen ? "Collapse queue" : "Expand queue"}
+            className="cursor-pointer group flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left text-muted transition-colors duration-ui ease-out-quart hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+              {isOpen ? (
+                <PanelRightClose className="h-5 w-5 sm:h-6 sm:w-6" />
+              ) : (
+                <PanelRightOpen className="h-5 w-5 sm:h-6 sm:w-6" />
+              )}
+            </span>
+
+            {isOpen ? (
+              <>
+                <div className="min-w-0 flex-1 overflow-hidden animate-in-sidebar-copy">
+                  <h2 className="type-title m-0 truncate text-nowrap text-foreground">Up Next</h2>
+                  <p className="type-meta mt-1 truncate text-nowrap text-subtle">
+                    {queue.length === 0
+                      ? "Queue is empty"
+                      : `${queue.length} ${queue.length === 1 ? "track" : "tracks"} lined up`}
+                  </p>
+                </div>
+                <span className="type-meta shrink-0 text-nowrap text-subtle animate-in-sidebar-copy">
+                  {formatModShortcut("L")}
+                </span>
+              </>
+            ) : null}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={queue.length === 0}
+            title={!isOpen ? (confirmClear ? "Confirm clear queue" : "Clear queue") : undefined}
+            aria-label={
+              !isOpen ? (confirmClear ? "Confirm clear queue" : "Clear queue") : undefined
+            }
+            className={cn(
+              "cursor-pointer mt-1 flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-ui ease-out-quart hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40",
+              confirmClear ? "text-danger" : "text-muted hover:text-danger"
+            )}
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+              <X className="h-4 w-4" />
+            </span>
+            {isOpen ? (
+              <span className="type-body-sm min-w-0 flex-1 truncate text-nowrap text-foreground animate-in-sidebar-copy">
+                {confirmClear ? "Confirm clear queue" : "Clear queue"}
+              </span>
+            ) : null}
+          </button>
+        </div>
+
+        <div className="ol-queue-inner flex min-h-0 flex-1 flex-col px-2 pb-6">
+          <ul className="flex min-h-0 flex-1 list-none flex-col gap-1 overflow-y-auto p-0">
+            {queue.length === 0 ? (
+              <div className={cn("flex flex-1 items-center", isOpen ? "px-3" : "justify-center")}>
+                {isOpen ? (
+                  <EmptyState
+                    className="w-full animate-in-sidebar-copy"
+                    density="compact"
+                    align="left"
+                    icon={<ListMusic className="h-5 w-5" aria-hidden />}
+                    eyebrow="Queue"
+                    title="Nothing is lined up yet"
+                    description={`Use Search (${formatModShortcut("K")}) to start playback or stage a few tracks for later.`}
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.035] text-subtle">
+                    <ListMusic className="h-5 w-5 shrink-0" />
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {queue.map((item, index) => {
+              const isActive = item.id === currentQueueItemId
+              const title = item.track?.title || item.sourceUrl
+              const artist = item.track?.artist || "Unknown"
+              const isLiked = Boolean(item.track?.likedAt)
+              const isDownloaded = item.track?.downloadStatus === "downloaded"
+              const isDownloadBusy =
+                item.track?.downloadStatus === "queued" ||
+                item.track?.downloadStatus === "downloading"
+
+              return (
+                <li
+                  key={item.id}
+                  draggable={Boolean(item.track)}
+                  onDragStart={(e) => {
+                    if (!item.track) return
+                    e.dataTransfer.setData(DRAG_MIME_TYPES.TRACK, JSON.stringify(item.track))
+                    e.dataTransfer.effectAllowed = "copy"
+                  }}
+                  className={cn(
+                    "group flex w-full min-w-0 cursor-grab items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-ui ease-out-quart active:cursor-grabbing",
+                    isActive ? "bg-accent/10 text-foreground" : "hover:bg-white/5 text-muted"
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onPlay(item)}
+                    title={`${title} - ${artist}`}
+                    aria-label={`Play ${title}`}
+                    className={cn(
+                      "group/icon relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border transition-[transform,colors,opacity] duration-ui ease-out-quart hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:hover:scale-100",
+                      isActive
+                        ? "border-accent/40 bg-accent/12 shadow-[0_0_0_1px_oklch(0.55_0.12_260_/_0.18)]"
+                        : "border-white/8 bg-white/[0.04] hover:border-white/14 hover:bg-white/[0.08]"
+                    )}
+                  >
+                    {item.track?.thumbnailUrl ? (
+                      <img
+                        src={item.track.thumbnailUrl}
+                        alt=""
+                        className={cn(
+                          "h-full w-full object-cover transition-opacity duration-ui ease-out-quart",
+                          isActive ? "opacity-55" : "opacity-95"
+                        )}
+                        loading={index < 8 ? "eager" : "lazy"}
+                        decoding="async"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-raised text-subtle">
+                        <ListMusic className="h-5 w-5" />
+                      </div>
+                    )}
+
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,oklch(1_0_0/.12),transparent_40%,oklch(0_0_0/.18))]" />
+
+                    {isActive ? (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="h-2.5 w-2.5 rounded-full bg-accent animate-pulse motion-reduce:animate-none" />
+                      </div>
+                    ) : (
+                      <div className="absolute inset-0 hidden items-center justify-center bg-canvas/50 group-hover/icon:flex group-focus-visible/icon:flex">
+                        <Play className="h-4 w-4 fill-foreground text-foreground" />
+                      </div>
+                    )}
+                  </button>
+
+                  {isOpen ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onPlay(item)}
+                        title={`${title} - ${artist}`}
+                        className="min-w-0 flex-1 overflow-hidden text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              "type-body-sm block truncate text-nowrap animate-in-sidebar-copy",
+                              isActive ? "text-accent" : "text-foreground"
+                            )}
+                          >
+                            {title}
+                          </span>
+                          {item.track?.downloadStatus === "downloaded" && (
+                            <CheckCircle2
+                              className="h-3.5 w-3.5 shrink-0 text-accent/70 animate-in-sidebar-copy"
+                              aria-label="Available offline"
+                            />
+                          )}
+                          {isDownloadBusy && (
+                            <span
+                              className="h-3.5 w-3.5 shrink-0 animate-spin-slow rounded-full border border-accent/40 border-t-accent animate-in-sidebar-copy"
+                              role="img"
+                              aria-label="Downloading"
+                            />
+                          )}
+                        </div>
+                        <span className="type-meta block truncate text-nowrap text-muted animate-in-sidebar-copy">
+                          {artist}
+                        </span>
+                      </button>
+                      {item.track && (
+                        <>
+                          <IconButton
+                            size="sm"
+                            onClick={() => onToggleLikeTrack(item.track as Track)}
+                            aria-label={isLiked ? `Unlike ${title}` : `Like ${title}`}
+                            title={isLiked ? "Unlike song" : "Like song"}
+                            active={isLiked}
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                          >
+                            <Heart className={cn("h-4 w-4", isLiked && "fill-current")} />
+                          </IconButton>
+                          <IconButton
+                            size="sm"
+                            onClick={() => {
+                              if (!item.track) return
+                              if (isDownloaded) onRemoveTrackDownload(item.track)
+                              else onDownloadTrack(item.track)
+                            }}
+                            aria-label={
+                              isDownloaded ? `Remove download for ${title}` : `Download ${title}`
+                            }
+                            title={downloadTitle(
+                              item.track.downloadStatus,
+                              item.track.downloadProgress
+                            )}
+                            active={isDownloaded}
+                            disabled={isDownloadBusy}
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                          >
+                            {isDownloaded ? (
+                              <CheckCircle2 className="h-4 w-4" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                          </IconButton>
+                        </>
+                      )}
+                      <IconButton
+                        size="sm"
+                        onClick={() => onRemove(item.id)}
+                        aria-label={`Remove ${item.track?.title || "queue item"} from queue`}
+                        title="Remove from queue"
+                        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                      >
+                        <X className="h-4 w-4" />
+                      </IconButton>
+                    </>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      </aside>
+    </>
+  )
+}
+
+export const QueueOverlay = memo(QueueOverlayImpl)
+QueueOverlay.displayName = "QueueOverlay"

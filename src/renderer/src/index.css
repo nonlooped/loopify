@@ -1,0 +1,496 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-canvas: oklch(0.15 0 0);
+  --color-surface: oklch(0.2 0 0 / 0.6);
+  --color-raised: oklch(0.25 0 0 / 0.6);
+  --color-border: oklch(1 0 0 / 0.1);
+  --color-foreground: oklch(0.95 0 0);
+  --color-muted: oklch(0.65 0 0);
+  --color-subtle: oklch(0.5 0 0);
+  --color-accent: oklch(0.55 0.12 260);
+  --color-accent-bright: oklch(0.65 0.12 260);
+  --color-danger: oklch(0.6 0.15 25);
+  /* High-contrast text and icons on accent fills (aligns with DESIGN button-primary). */
+  --color-on-accent: oklch(0.99 0 0);
+  /* Unfilled segment of range sliders; matches control chrome neutrals. */
+  --color-range-track: oklch(0.32 0 0);
+  /* 1px ring: use C=0 achromatic white; oklch(1 1 1) is max chroma at hue 1° (red/magenta). */
+  --shadow-panel: 0 20px 40px -10px oklch(0 0 0 / 0.3), 0 0 0 1px oklch(1 0 0 / 0.1);
+  --shadow-island: 0 20px 40px -10px oklch(0 0 0 / 0.3), 0 0 0 1px oklch(1 0 0 / 0.1);
+  /* Motion (impeccable animate / product register) */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  /* Exits: deceleration into hidden state (no bounce) */
+  --ease-in-quart: cubic-bezier(0.5, 0, 0.75, 1);
+  --transition-duration-ui: 200ms;
+  --transition-duration-press: 150ms;
+  --transition-duration-modal: 280ms;
+  /* ~75% of enter; faster exit per animate ref */
+  --transition-duration-modal-exit: 210ms;
+  /* Library view crossfade: keep short so it feels responsive, not “floaty” */
+  --transition-duration-workspace: 180ms;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    overflow: hidden; /* App shell */
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
+  }
+  #root {
+    isolation: isolate;
+  }
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: oklch(0.55 0.12 260 / 0.35); /* System Blue selection */
+    color: var(--color-foreground);
+  }
+}
+
+@layer components {
+  .type-display {
+    font-size: 2.75rem;
+    line-height: 1.02;
+    font-weight: 640;
+    letter-spacing: -0.04em;
+  }
+
+  .type-heading {
+    font-size: 1.5rem;
+    line-height: 1.12;
+    font-weight: 620;
+    letter-spacing: -0.03em;
+  }
+
+  .type-title {
+    font-size: 1.125rem;
+    line-height: 1.24;
+    font-weight: 600;
+    letter-spacing: -0.018em;
+  }
+
+  .type-body {
+    font-size: 1rem;
+    line-height: 1.55;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+  }
+
+  .type-body-sm {
+    font-size: 0.9375rem;
+    line-height: 1.48;
+    font-weight: 400;
+    letter-spacing: -0.003em;
+  }
+
+  .type-label {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    font-weight: 520;
+    letter-spacing: 0.012em;
+  }
+
+  .type-meta {
+    font-size: 0.75rem;
+    line-height: 1.3;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes now-playing-swap {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.now-playing-swap {
+  animation: now-playing-swap 220ms var(--ease-out-quart) both;
+}
+
+@keyframes sidebar-copy-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-in-sidebar-copy {
+  animation: sidebar-copy-in 180ms var(--ease-out-quart) both;
+}
+
+@keyframes vt-fade {
+  from {
+    filter: blur(3px);
+    opacity: 0;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+@keyframes vt-slide-x {
+  from {
+    transform: translateX(var(--vt-slide-offset));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-slow {
+    animation: none;
+  }
+
+  .animate-spin {
+    animation: none;
+  }
+  .now-playing-swap {
+    animation: none;
+  }
+  .animate-in-sidebar-copy {
+    animation: none;
+  }
+}
+
+/* Range inputs: Apple-modern slider style; --range-progress set by Slider (e.g. "37%") */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-foreground) 0%,
+    var(--color-foreground) var(--range-progress, 0%),
+    var(--color-range-track) var(--range-progress, 0%),
+    var(--color-range-track) 100%
+  );
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: var(--color-foreground);
+  box-shadow: 0 2px 4px oklch(0 0 0 / 0.2);
+  cursor: pointer;
+  transition: transform var(--transition-duration-press) var(--ease-out-quart);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  input[type="range"]::-webkit-slider-thumb {
+    transition: none;
+  }
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(0.9);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--color-foreground);
+  border: none;
+  box-shadow: 0 2px 4px oklch(0 0 0 / 0.2);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  background: var(--color-range-track);
+  border-radius: 9999px;
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 4px;
+  background: var(--color-foreground);
+  border-radius: 9999px;
+}
+
+input[type="range"]:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+}
+
+.range-control:has(input:focus-visible) .range-control-track {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+}
+
+.range-control:has(input:active) .range-control-thumb {
+  scale: 0.9;
+}
+
+/* Hide scrollbars globally while preserving scroll behavior. */
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+html[data-playlist-nav="forward"]::view-transition-old(workspace-page) {
+  --vt-slide-offset: -48px;
+  animation:
+    150ms ease-in both vt-fade reverse,
+    280ms ease-in-out both vt-slide-x reverse;
+}
+
+html[data-playlist-nav="forward"]::view-transition-new(workspace-page) {
+  --vt-slide-offset: 48px;
+  animation:
+    210ms ease-out 90ms both vt-fade,
+    280ms ease-in-out both vt-slide-x;
+}
+
+html[data-playlist-nav="back"]::view-transition-old(workspace-page) {
+  --vt-slide-offset: 48px;
+  animation:
+    150ms ease-in both vt-fade reverse,
+    280ms ease-in-out both vt-slide-x reverse;
+}
+
+html[data-playlist-nav="back"]::view-transition-new(workspace-page) {
+  --vt-slide-offset: -48px;
+  animation:
+    210ms ease-out 90ms both vt-fade,
+    280ms ease-in-out both vt-slide-x;
+}
+
+/* Overlay motion: transform + opacity only; exit faster with ease-in */
+@layer components {
+  .ol-backdrop {
+    opacity: 0;
+    transition: opacity var(--transition-duration-modal) var(--ease-out-quart);
+  }
+  .ol-backdrop.ol-open {
+    opacity: 1;
+  }
+  .ol-backdrop:not(.ol-open) {
+    transition: opacity var(--transition-duration-modal-exit) var(--ease-in-quart);
+  }
+  .ol-panel {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transform-origin: 50% 50%;
+    transition:
+      opacity var(--transition-duration-modal) var(--ease-out-quart),
+      transform var(--transition-duration-modal) var(--ease-out-quart);
+  }
+  .ol-panel.ol-open {
+    opacity: 1;
+    transform: none;
+  }
+  .ol-panel:not(.ol-open) {
+    transition:
+      opacity var(--transition-duration-modal-exit) var(--ease-in-quart),
+      transform var(--transition-duration-modal-exit) var(--ease-in-quart);
+  }
+  /* Top command palette: sheet from above */
+  .ol-palette-panel {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.99);
+    transform-origin: 50% 0;
+    transition:
+      opacity var(--transition-duration-modal) var(--ease-out-quart),
+      transform var(--transition-duration-modal) var(--ease-out-quart);
+  }
+  .ol-palette-panel.ol-open {
+    opacity: 1;
+    transform: none;
+  }
+  .ol-palette-panel:not(.ol-open) {
+    transition:
+      opacity var(--transition-duration-modal-exit) var(--ease-in-quart),
+      transform var(--transition-duration-modal-exit) var(--ease-in-quart);
+  }
+  /* Now playing: crossfade block */
+  .ol-crossfade {
+    transition: opacity var(--transition-duration-ui) var(--ease-out-quart);
+  }
+  .ol-crossfade.is-dim {
+    opacity: 0;
+  }
+  /* Queue: inner track moves with panel */
+  .ol-queue-inner {
+    transition: opacity var(--transition-duration-ui) var(--ease-out-quart);
+  }
+  .ol-queue-inner.is-hidden {
+    opacity: 0;
+  }
+  /* Error banner: same open/close pattern as overlays */
+  .ol-error-banner {
+    transform: translateY(-100%);
+    opacity: 0;
+    transition:
+      transform var(--transition-duration-modal) var(--ease-out-quart),
+      opacity var(--transition-duration-modal) var(--ease-out-quart);
+  }
+  .ol-error-banner.ol-open {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  .ol-error-banner:not(.ol-open) {
+    transition:
+      transform var(--transition-duration-modal-exit) var(--ease-in-quart),
+      opacity var(--transition-duration-modal-exit) var(--ease-in-quart);
+  }
+  /* App shell: first paint */
+  .ol-app-fade {
+    transition: opacity var(--transition-duration-modal) var(--ease-out-quart);
+  }
+  .ol-app-fade.is-hidden {
+    opacity: 0;
+  }
+  .ol-app-fade.is-visible {
+    opacity: 1;
+  }
+  .ol-now-playing-panel {
+    transform-origin: 50% 100%;
+    opacity: 0;
+    filter: saturate(0.88);
+    transform: translateY(54px) scale(0.78);
+    transition:
+      opacity 340ms var(--ease-out-quart),
+      transform 380ms var(--ease-out-quart),
+      filter 340ms var(--ease-out-quart);
+  }
+  .ol-now-playing-panel.ol-open {
+    opacity: 1;
+    filter: saturate(1);
+    transform: translateY(0) scale(1);
+  }
+  .ol-now-playing-panel:not(.ol-open) {
+    transition:
+      opacity var(--transition-duration-modal-exit) var(--ease-in-quart),
+      transform 260ms var(--ease-in-quart),
+      filter var(--transition-duration-modal-exit) var(--ease-in-quart);
+  }
+  .ol-now-playing-dock {
+    transform-origin: 50% 100%;
+    transition:
+      opacity 220ms var(--ease-out-quart),
+      transform 300ms var(--ease-out-quart),
+      border-color 220ms var(--ease-out-quart),
+      background-color 220ms var(--ease-out-quart);
+  }
+  .ol-now-playing-dock.is-hidden {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation: none;
+  }
+
+  .ol-backdrop,
+  .ol-backdrop:not(.ol-open),
+  .ol-panel,
+  .ol-panel:not(.ol-open),
+  .ol-palette-panel,
+  .ol-palette-panel:not(.ol-open) {
+    transition: opacity 0.01ms linear;
+  }
+  .ol-backdrop,
+  .ol-backdrop:not(.ol-open) {
+    opacity: 1;
+  }
+  .ol-panel,
+  .ol-palette-panel {
+    transform: none;
+  }
+  .ol-crossfade,
+  .ol-crossfade.is-dim {
+    transition: opacity 0.01ms linear;
+  }
+  .ol-queue-inner,
+  .ol-queue-inner.is-hidden {
+    transition: none;
+  }
+  .ol-error-banner,
+  .ol-error-banner:not(.ol-open) {
+    transform: none;
+    transition: opacity 0.01ms linear;
+  }
+  .ol-app-fade,
+  .ol-app-fade.is-hidden {
+    transition: none;
+  }
+  .ol-app-fade {
+    opacity: 1;
+  }
+  .ol-now-playing-panel,
+  .ol-now-playing-panel:not(.ol-open),
+  .ol-now-playing-dock,
+  .ol-now-playing-dock.is-hidden {
+    filter: none;
+    transform: none;
+    transition: opacity 0.01ms linear;
+  }
+}
