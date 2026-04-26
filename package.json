@@ -2,6 +2,7 @@
   "name": "loopify-desktop",
   "version": "0.1.0",
   "description": "Personal desktop music app for resolving, queueing, and playing online sources.",
+  "author": "Loopify",
   "type": "module",
   "main": "out/main/app.js",
   "scripts": {
@@ -59,7 +60,8 @@
     "extraResources": [
       {
         "from": "resources/binaries/",
-        "to": "binaries"
+        "to": "binaries",
+        "filter": ["**/*", "!*.exe"]
       }
     ],
     "win": {
@@ -76,6 +78,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "publish": null
   }
 }
