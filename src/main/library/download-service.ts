@@ -9,9 +9,31 @@ type DownloadEvents = {
   onTrackChanged: (track: Track) => void
 }
 
+const MAX_CONCURRENT_DOWNLOADS = 3
+
+class Semaphore {
+  private running = 0
+  private queue: (() => void)[] = []
+  constructor(private readonly max: number) {}
+  async acquire<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.running >= this.max) {
+      await new Promise<void>((resolve) => this.queue.push(resolve))
+    }
+    this.running++
+    try {
+      return await fn()
+    } finally {
+      this.running--
+      const next = this.queue.shift()
+      next?.()
+    }
+  }
+}
+
 export class DownloadService {
   private readonly inFlight = new Set<string>()
   private readonly downloadsDir = join(app.getPath("userData"), "downloads")
+  private readonly semaphore = new Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
   constructor(
     private readonly library: LibraryRepository,
@@ -42,7 +64,7 @@ export class DownloadService {
       if (track.downloadStatus === "downloaded" || this.inFlight.has(track.id)) {
         continue
       }
-      void this.start(track)
+      void this.semaphore.acquire(() => this.start(track))
     }
     return this.library.listPlaylists()
   }
