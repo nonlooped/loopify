@@ -1,6 +1,6 @@
 import { Download, Heart, Loader2, Play, Plus, Search, X } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import type { TrackCandidate } from "src/shared/types/music"
+import type { CatalogTrack, TrackCandidate } from "src/shared/types/music"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { cn } from "@/lib/cn"
 import { formatModShortcutTitle } from "@/lib/shortcut"
@@ -23,10 +23,11 @@ export function CommandPalette({
   onDownloadTrack,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<TrackCandidate[]>([])
+  const [results, setResults] = useState<CatalogTrack[]>([])
   const [activeIndex, setActiveIndex] = useState(-1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsContainerRef = useRef<HTMLDivElement>(null)
@@ -41,6 +42,7 @@ export function CommandPalette({
     setActiveIndex(-1)
     setIsLoading(false)
     setError(null)
+    setResolvingId(null)
   }, [shouldRender])
 
   // Reset active index when results change
@@ -108,8 +110,8 @@ export function CommandPalette({
     setIsLoading(true)
     setError(null)
     try {
-      const candidates = await window.loopify.search.query({ text: text.trim() })
-      setResults(candidates)
+      const hits = await window.loopify.search.query({ text: text.trim() })
+      setResults(hits)
     } catch (err) {
       console.error("Search failed:", err)
       setError(err instanceof Error ? err.message : "Search failed")
@@ -118,6 +120,25 @@ export function CommandPalette({
       setIsLoading(false)
     }
   }, [])
+
+  const withResolution = useCallback(
+    async (catalog: CatalogTrack, action: (candidate: TrackCandidate) => void) => {
+      const id = `${catalog.catalogProvider}:${catalog.catalogId}`
+      setResolvingId(id)
+      try {
+        const candidate = await window.loopify.resolver.resolveCatalog(catalog)
+        action(candidate)
+      } catch (err) {
+        console.error("Source resolution failed:", err)
+        setError(
+          err instanceof Error ? err.message : "Could not find an audio source for this track."
+        )
+      } finally {
+        setResolvingId(null)
+      }
+    },
+    []
+  )
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -141,20 +162,23 @@ export function CommandPalette({
     }
     if (e.key !== "Enter" || results.length === 0 || activeIndex < 0) return
     const selected = results[activeIndex]
-    if (!selected) return
+    if (!selected || resolvingId) return
     const mod = e.metaKey || e.ctrlKey
     if (mod) {
       if (onEnqueueTrack) {
         e.preventDefault()
-        onEnqueueTrack(selected)
-        onClose()
+        void withResolution(selected, (c) => {
+          onEnqueueTrack(c)
+        })
       }
       return
     }
     if (onPlayTrack) {
       e.preventDefault()
-      onPlayTrack(selected)
-      onClose()
+      void withResolution(selected, (c) => {
+        onPlayTrack(c)
+        onClose()
+      })
     }
   }
 
@@ -222,88 +246,102 @@ export function CommandPalette({
               </p>
             </div>
           )}
-          {results.map((candidate, index) => (
-            <div
-              key={candidate.sourceUrl}
-              data-active-item={index === activeIndex || undefined}
-              className={cn(
-                "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-ui ease-out-quart",
-                index === activeIndex ? "bg-white/8" : "hover:bg-white/5"
-              )}
-            >
-              <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-raised">
-                {candidate.thumbnailUrl && (
-                  <img
-                    src={candidate.thumbnailUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                  />
+          {results.map((hit, index) => {
+            const rowId = `${hit.catalogProvider}:${hit.catalogId}`
+            const isResolving = resolvingId === rowId
+            return (
+              <div
+                key={rowId}
+                data-active-item={index === activeIndex || undefined}
+                className={cn(
+                  "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-ui ease-out-quart",
+                  index === activeIndex ? "bg-white/8" : "hover:bg-white/5"
                 )}
-              </div>
-              <div className="flex flex-1 flex-col min-w-0">
-                <span className="type-body-sm truncate text-foreground">{candidate.title}</span>
-                <div className="flex items-center gap-2">
-                  <span className="type-meta truncate text-muted">
-                    {candidate.artist || "Unknown Artist"}
-                  </span>
-                  <span className="type-meta tabular-nums text-subtle">
-                    {formatDuration(candidate.durationMs)}
-                  </span>
+              >
+                <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-raised">
+                  {hit.artworkUrl && (
+                    <img
+                      src={hit.artworkUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                </div>
+                <div className="flex flex-1 flex-col min-w-0">
+                  <span className="type-body-sm truncate text-foreground">{hit.title}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="type-meta truncate text-muted">{hit.artist}</span>
+                    <span className="type-meta tabular-nums text-subtle">
+                      {formatDuration(hit.durationMs)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 opacity-100 transition-opacity duration-ui ease-out-quart sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 motion-reduce:transition-none motion-reduce:opacity-100">
+                  {isResolving ? (
+                    <Loader2 className="h-5 w-5 text-muted animate-spin mx-1.5" />
+                  ) : (
+                    <>
+                      {onPlayTrack && (
+                        <button
+                          type="button"
+                          disabled={!!resolvingId}
+                          onClick={() =>
+                            void withResolution(hit, (c) => {
+                              onPlayTrack(c)
+                              onClose()
+                            })
+                          }
+                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-accent text-on-accent hover:scale-105 active:scale-95 transition-transform duration-press ease-out-quart motion-reduce:hover:scale-100 motion-reduce:active:scale-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Play now"
+                          aria-label={`Play ${hit.title}`}
+                        >
+                          <Play className="h-4 w-4 fill-current ml-0.5" />
+                        </button>
+                      )}
+                      {onEnqueueTrack && (
+                        <button
+                          type="button"
+                          disabled={!!resolvingId}
+                          onClick={() => void withResolution(hit, (c) => onEnqueueTrack(c))}
+                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Add to queue"
+                          aria-label={`Add ${hit.title} to queue`}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      )}
+                      {onLikeTrack && (
+                        <button
+                          type="button"
+                          disabled={!!resolvingId}
+                          onClick={() => void withResolution(hit, (c) => onLikeTrack(c))}
+                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Like song"
+                          aria-label={`Like ${hit.title}`}
+                        >
+                          <Heart className="h-4 w-4" />
+                        </button>
+                      )}
+                      {onDownloadTrack && (
+                        <button
+                          type="button"
+                          disabled={!!resolvingId}
+                          onClick={() => void withResolution(hit, (c) => onDownloadTrack(c))}
+                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Download for offline playback"
+                          aria-label={`Download ${hit.title}`}
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-1 opacity-100 transition-opacity duration-ui ease-out-quart sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 motion-reduce:transition-none motion-reduce:opacity-100">
-                {onPlayTrack && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onPlayTrack(candidate)
-                      onClose()
-                    }}
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-accent text-on-accent hover:scale-105 active:scale-95 transition-transform duration-press ease-out-quart motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
-                    title="Play now"
-                    aria-label={`Play ${candidate.title}`}
-                  >
-                    <Play className="h-4 w-4 fill-current ml-0.5" />
-                  </button>
-                )}
-                {onEnqueueTrack && (
-                  <button
-                    type="button"
-                    onClick={() => onEnqueueTrack(candidate)}
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart"
-                    title="Add to queue"
-                    aria-label={`Add ${candidate.title} to queue`}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                )}
-                {onLikeTrack && (
-                  <button
-                    type="button"
-                    onClick={() => onLikeTrack(candidate)}
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart"
-                    title="Like song"
-                    aria-label={`Like ${candidate.title}`}
-                  >
-                    <Heart className="h-4 w-4" />
-                  </button>
-                )}
-                {onDownloadTrack && (
-                  <button
-                    type="button"
-                    onClick={() => onDownloadTrack(candidate)}
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart"
-                    title="Download for offline playback"
-                    aria-label={`Download ${candidate.title}`}
-                  >
-                    <Download className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
