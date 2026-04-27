@@ -2,8 +2,10 @@ import { Loader2 } from "lucide-react"
 import type { Dispatch, SetStateAction } from "react"
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
+import type { UpdateStatus } from "src/shared/contracts/ipc"
 import { AppErrorBanner } from "@/components/AppErrorBanner"
 import { Button } from "@/components/Button"
+import { UpdateBanner } from "@/components/UpdateBanner"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
@@ -339,6 +341,8 @@ function AppTree({
 }: AppTreeProps) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [isCompactShell, setIsCompactShell] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  const [dismissedUpdatePhase, setDismissedUpdatePhase] = useState<string | null>(null)
   const clearActionError = useCallback(() => setActionError(null), [])
 
   useEffect(() => {
@@ -349,6 +353,14 @@ function AppTree({
     mediaQuery.addEventListener("change", applyViewportMode)
 
     return () => mediaQuery.removeEventListener("change", applyViewportMode)
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = window.loopify.settings.onUpdateStatusChange((status) => {
+      setUpdateStatus(status)
+    })
+    void window.loopify.settings.getUpdateStatus().then(setUpdateStatus).catch(console.error)
+    return unsubscribe
   }, [])
 
   const selectPlaylistWithTransition = useCallback(
@@ -939,9 +951,22 @@ function AppTree({
     hasPrevious,
   })
 
+  const showUpdateBanner =
+    updateStatus &&
+    (updateStatus.phase === "available" ||
+      updateStatus.phase === "downloading" ||
+      updateStatus.phase === "downloaded") &&
+    dismissedUpdatePhase !== updateStatus.phase
+
   return (
     <div className="relative flex h-screen min-h-0 w-full flex-row overflow-hidden bg-canvas text-foreground">
       <AppErrorBanner message={actionError} onDismiss={clearActionError} />
+      {showUpdateBanner && (
+        <UpdateBanner
+          status={updateStatus}
+          onDismiss={() => setDismissedUpdatePhase(updateStatus.phase)}
+        />
+      )}
       <NavRail
         isExpanded={isSidebarExpanded}
         onToggleExpand={() => setIsSidebarExpanded((e) => !e)}
