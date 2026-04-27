@@ -41,7 +41,6 @@ jobs:
           path: |
             release/*.AppImage
             release/*.tar.gz
-            release/*.blockmap
             release/latest*.yml
 
       - name: Attach installers to GitHub Release
@@ -51,6 +50,5 @@ jobs:
           files: |
             release/*.AppImage
             release/*.tar.gz
-            release/*.blockmap
             release/latest*.yml
           fail_on_unmatched_files: true
