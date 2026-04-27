@@ -18,5 +18,5 @@
       "@/*": ["src/renderer/*"]
     }
   },
-  "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.tsx", "drizzle/**/*.ts"]
+  "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.tsx"]
 }

@@ -9,8 +9,6 @@
     "includes": [
       "**/src/**",
       "**/electron.vite.config.ts",
-      "**/drizzle/**",
-      "**/drizzle.config.*",
       "*.{json,md}",
       "!**/node_modules",
       "!.agents",
