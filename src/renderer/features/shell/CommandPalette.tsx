@@ -1,7 +1,8 @@
 import { Download, Heart, Loader2, Play, Plus, Search, X } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { TrackCandidate } from "src/shared/types/music"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
+import { cn } from "@/lib/cn"
 import { formatModShortcutTitle } from "@/lib/shortcut"
 
 interface CommandPaletteProps {
@@ -23,10 +24,12 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<TrackCandidate[]>([])
+  const [activeIndex, setActiveIndex] = useState(-1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const resultsContainerRef = useRef<HTMLDivElement>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { shouldRender, showOverlay, onBackdropTransitionEnd } = useOverlayPresence(isOpen)
 
@@ -35,9 +38,35 @@ export function CommandPalette({
     if (shouldRender) return
     setQuery("")
     setResults([])
+    setActiveIndex(-1)
     setIsLoading(false)
     setError(null)
   }, [shouldRender])
+
+  // Reset active index when results change
+  useEffect(() => {
+    setActiveIndex(results.length > 0 ? 0 : -1)
+  }, [results])
+
+  // Scroll active item into view when keyboard navigation changes
+  useLayoutEffect(() => {
+    if (activeIndex < 0) return
+    const container = resultsContainerRef.current
+    if (!container) return
+    const activeEl = container.querySelector<HTMLDivElement>("[data-active-item='true']")
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    }
+  }, [activeIndex])
+
+  // Clear pending debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current)
+      }
+    }
+  }, [])
 
   // Auto-focus input when opened
   useEffect(() => {
@@ -100,19 +129,31 @@ export function CommandPalette({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "Enter" || results.length === 0) return
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setActiveIndex((i) => (i < results.length - 1 ? i + 1 : i))
+      return
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setActiveIndex((i) => (i > 0 ? i - 1 : i))
+      return
+    }
+    if (e.key !== "Enter" || results.length === 0 || activeIndex < 0) return
+    const selected = results[activeIndex]
+    if (!selected) return
     const mod = e.metaKey || e.ctrlKey
     if (mod) {
       if (onEnqueueTrack) {
         e.preventDefault()
-        onEnqueueTrack(results[0])
+        onEnqueueTrack(selected)
         onClose()
       }
       return
     }
     if (onPlayTrack) {
       e.preventDefault()
-      onPlayTrack(results[0])
+      onPlayTrack(selected)
       onClose()
     }
   }
@@ -158,7 +199,7 @@ export function CommandPalette({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="p-2 max-h-[60vh] overflow-y-auto">
+        <div ref={resultsContainerRef} className="p-2 max-h-[60vh] overflow-y-auto">
           {error && (
             <div className="px-4 py-6 text-center text-danger text-sm font-semibold">{error}</div>
           )}
@@ -181,10 +222,14 @@ export function CommandPalette({
               </p>
             </div>
           )}
-          {results.map((candidate) => (
+          {results.map((candidate, index) => (
             <div
               key={candidate.sourceUrl}
-              className="group flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-white/5 transition-colors duration-ui ease-out-quart"
+              data-active-item={index === activeIndex || undefined}
+              className={cn(
+                "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-ui ease-out-quart",
+                index === activeIndex ? "bg-white/8" : "hover:bg-white/5"
+              )}
             >
               <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-raised">
                 {candidate.thumbnailUrl && (
