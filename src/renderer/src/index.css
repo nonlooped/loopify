@@ -275,15 +275,28 @@ input[type="range"]:focus-visible {
   scale: 0.9;
 }
 
-/* Hide scrollbars globally while preserving scroll behavior. */
+/* Subtle native scrollbars for desktop spatial awareness. */
 * {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 0.08) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 0.08);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(1 0 0 / 0.15);
 }
 
 ::view-transition-old(root),
