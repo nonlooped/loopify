@@ -8,11 +8,20 @@ import type { PlayerState, PlayerTrack, RepeatMode, Track } from "../../shared/t
 import type { SettingsRepository } from "../db/repositories"
 import { resolveMpvPath } from "./mpv-binary"
 
+const STATE_EMIT_THROTTLE_MS = 200
+
 export class PlayerService extends EventEmitter {
   private process: ChildProcessByStdio<null, Readable, Readable> | null = null
   private socket: Socket | null = null
   private ipcPath = createMpvIpcPath()
   private state: PlayerState
+  private requestId = 0
+  private pendingCommands = new Map<
+    number,
+    { resolve: () => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
+  >()
+  private lastEmitAt = 0
+  private emitTimer: NodeJS.Timeout | null = null
 
   constructor(private readonly settings: SettingsRepository) {
     super()
@@ -223,14 +232,32 @@ export class PlayerService extends EventEmitter {
           name?: string
           data?: unknown
           reason?: string
+          request_id?: number
+          error?: string
         }
+
+        if (typeof message.request_id === "number") {
+          const pending = this.pendingCommands.get(message.request_id)
+          if (pending) {
+            clearTimeout(pending.timer)
+            this.pendingCommands.delete(message.request_id)
+            if (message.error && message.error !== "success") {
+              pending.reject(new Error(`mpv command failed: ${message.error}`))
+            } else {
+              pending.resolve()
+            }
+          }
+          continue
+        }
+
         if (
           message.event === "property-change" &&
           message.name === "time-pos" &&
           typeof message.data === "number"
         ) {
           this.state = { ...this.state, positionSeconds: message.data }
-          this.emitState()
+          this.scheduleThrottledEmit()
+          continue
         }
         if (
           message.event === "property-change" &&
@@ -238,7 +265,8 @@ export class PlayerService extends EventEmitter {
           typeof message.data === "number"
         ) {
           this.state = { ...this.state, durationSeconds: message.data }
-          this.emitState()
+          this.scheduleThrottledEmit()
+          continue
         }
         if (
           message.event === "property-change" &&
@@ -247,12 +275,13 @@ export class PlayerService extends EventEmitter {
         ) {
           if (message.data && this.state.status === "playing") {
             this.state = { ...this.state, status: "paused" }
-            this.emitState()
+            this.scheduleThrottledEmit()
           }
           if (!message.data && this.state.status === "paused") {
             this.state = { ...this.state, status: "playing" }
-            this.emitState()
+            this.scheduleThrottledEmit()
           }
+          continue
         }
         if (message.event === "end-file") {
           if (message.reason === "eof") {
@@ -269,13 +298,31 @@ export class PlayerService extends EventEmitter {
           }
         }
       } catch {
-        this.state = {
-          ...this.state,
-          status: "errored",
-          error: "mpv returned an unreadable event.",
-        }
-        this.emitState()
+        // ignore non-JSON lines (mpv logs, warnings)
       }
+    }
+  }
+
+  private scheduleThrottledEmit(): void {
+    const now = Date.now()
+    if (now - this.lastEmitAt >= STATE_EMIT_THROTTLE_MS) {
+      this.lastEmitAt = now
+      if (this.emitTimer) {
+        clearTimeout(this.emitTimer)
+        this.emitTimer = null
+      }
+      this.emitState()
+      return
+    }
+    if (!this.emitTimer) {
+      this.emitTimer = setTimeout(
+        () => {
+          this.emitTimer = null
+          this.lastEmitAt = Date.now()
+          this.emitState()
+        },
+        STATE_EMIT_THROTTLE_MS - (now - this.lastEmitAt)
+      )
     }
   }
 
@@ -285,9 +332,18 @@ export class PlayerService extends EventEmitter {
         reject(new Error("mpv is not connected."))
         return
       }
-      this.socket.write(`${JSON.stringify({ command })}\n`, (error) => {
-        if (error) reject(error)
-        else resolve()
+      const requestId = ++this.requestId
+      const timer = setTimeout(() => {
+        this.pendingCommands.delete(requestId)
+        reject(new Error("mpv command timed out."))
+      }, 5000)
+      this.pendingCommands.set(requestId, { resolve, reject, timer })
+      this.socket.write(`${JSON.stringify({ command, request_id: requestId })}\n`, (error) => {
+        if (error) {
+          clearTimeout(timer)
+          this.pendingCommands.delete(requestId)
+          reject(error)
+        }
       })
     })
   }
