@@ -11,7 +11,9 @@ export function isUpdaterSupported(
   isPackaged: boolean,
   resourcesPath: string
 ): boolean {
-  return isPackaged && (platform === "win32" || platform === "darwin") && hasUpdaterConfig(resourcesPath)
+  return (
+    isPackaged && (platform === "win32" || platform === "darwin") && hasUpdaterConfig(resourcesPath)
+  )
 }
 
 export function createUpdateStatus(

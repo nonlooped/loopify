@@ -1,7 +1,16 @@
 import { app } from "electron"
-import electronUpdater, { type AppUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater"
+import electronUpdater, {
+  type AppUpdater,
+  type ProgressInfo,
+  type UpdateInfo,
+} from "electron-updater"
 import type { UpdateStatus } from "../../shared/contracts/ipc"
-import { createUpdateStatus, hasUpdaterConfig, isUpdaterSupported, normalizeVersion } from "./update-status"
+import {
+  createUpdateStatus,
+  hasUpdaterConfig,
+  isUpdaterSupported,
+  normalizeVersion,
+} from "./update-status"
 
 const { autoUpdater } = electronUpdater
 
@@ -11,7 +20,11 @@ export class UpdaterService {
   private readonly updater: AppUpdater
   private readonly listeners = new Set<UpdateStatusListener>()
   private readonly currentVersion = app.getVersion()
-  private readonly supported = isUpdaterSupported(process.platform, app.isPackaged, process.resourcesPath)
+  private readonly supported = isUpdaterSupported(
+    process.platform,
+    app.isPackaged,
+    process.resourcesPath
+  )
 
   private status: UpdateStatus = this.supported
     ? createUpdateStatus(this.currentVersion, "idle")
