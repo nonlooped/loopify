@@ -23,6 +23,7 @@ data
 .agents
 .claude
 CLAUDE.md
+AGENTS.md
 
 # Testing
 coverage
@@ -35,6 +36,7 @@ release
 Thumbs.db
 
 # Docs
+DESIGN.json
 DESIGN.md
 PRODUCT.md
 
