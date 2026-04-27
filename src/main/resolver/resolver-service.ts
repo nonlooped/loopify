@@ -1,8 +1,15 @@
 import { spawn } from "node:child_process"
-import type { Provider, ResolvedTrack, TrackCandidate } from "../../shared/types/music"
+import type {
+  CatalogTrack,
+  Provider,
+  ResolvedTrack,
+  TrackCandidate,
+} from "../../shared/types/music"
+import { searchCatalog } from "../catalog/catalog-search"
 import type { ResolverCacheRepository, SettingsRepository } from "../db/repositories"
 import { enrichTrackCandidate } from "../metadata/catalog-enrichment"
 import { buildYtsearchArg } from "../music/query-builders"
+import { type MatcherEntry, pickBestMatch } from "./youtube-source-matcher"
 
 type YtdlpEntry = {
   id?: string
@@ -15,6 +22,7 @@ type YtdlpEntry = {
   original_url?: string
   extractor_key?: string
   url?: string
+  view_count?: number
   entries?: YtdlpEntry[]
 }
 
@@ -28,14 +36,25 @@ export type PlaylistResolution = {
 
 export const YT_FORMAT_PLAY = "bestaudio/best"
 
+const STAGE2_SEARCH_LIMIT = 8
+
+export type CandidateEnrichedListener = (sourceUrl: string, candidate: TrackCandidate) => void
+
 export class ResolverService {
   private readonly inFlight = new Map<string, Promise<ResolvedTrack>>()
   private readonly inFlightStream = new Map<string, Promise<string | null>>()
+  private readonly inFlightCatalog = new Map<string, Promise<TrackCandidate>>()
+  private readonly inFlightEnrichment = new Map<string, Promise<void>>()
+  private onCandidateEnriched: CandidateEnrichedListener | null = null
 
   constructor(
     private readonly settings: SettingsRepository,
     private readonly cache: ResolverCacheRepository
   ) {}
+
+  setOnCandidateEnriched(listener: CandidateEnrichedListener | null): void {
+    this.onCandidateEnriched = listener
+  }
 
   primeCandidate(candidate: TrackCandidate): void {
     this.cache.setResolved(candidate.sourceUrl, {
@@ -88,22 +107,47 @@ export class ResolverService {
       settings.resolverTimeoutMs
     )
     const base = this.toCandidate(result, source)
-    const candidate = settings.metadataEnrichmentEnabled
-      ? await enrichTrackCandidate(base, { minScore: settings.metadataMinScore })
-      : base
     const streamUrl = result.url ?? null
     const expiresAt = this.metadataExpiresAt()
     this.cache.setResolved(source, {
-      candidate,
+      candidate: base,
       streamUrl,
       expiresAt,
-      streamExpiresAt: this.streamExpiresAt(),
+      streamExpiresAt: this.streamExpiresAt(streamUrl),
     })
+
+    if (settings.metadataEnrichmentEnabled) {
+      this.enrichInBackground(source, base, streamUrl)
+    }
+
     return {
-      candidate,
+      candidate: base,
       streamUrl,
       expiresAt,
     }
+  }
+
+  private enrichInBackground(source: string, base: TrackCandidate, streamUrl: string | null): void {
+    if (this.inFlightEnrichment.has(source)) return
+    const settings = this.settings.get()
+    const promise = enrichTrackCandidate(base, { minScore: settings.metadataMinScore })
+      .then((enriched) => {
+        if (enriched === base) return
+        this.cache.setResolved(source, {
+          candidate: enriched,
+          streamUrl,
+          expiresAt: this.metadataExpiresAt(),
+          streamExpiresAt: this.streamExpiresAt(streamUrl),
+        })
+        this.onCandidateEnriched?.(source, enriched)
+      })
+      .catch(() => {
+        // enrichment failures are non-fatal; raw candidate is already cached
+      })
+      .finally(() => {
+        this.inFlightEnrichment.delete(source)
+      })
+    this.inFlightEnrichment.set(source, promise)
   }
 
   private async fillStreamUrl(source: string, candidate: TrackCandidate): Promise<string | null> {
@@ -119,7 +163,7 @@ export class ResolverService {
           candidate,
           streamUrl: url,
           expiresAt: this.metadataExpiresAt(),
-          streamExpiresAt: this.streamExpiresAt(),
+          streamExpiresAt: this.streamExpiresAt(url),
         })
         return url
       })
@@ -134,13 +178,17 @@ export class ResolverService {
     return Date.now() + this.settings.get().cacheTtlHours * 60 * 60 * 1000
   }
 
-  private streamExpiresAt(): number {
-    return Date.now() + this.settings.get().streamCacheTtlMinutes * 60 * 1000
+  private streamExpiresAt(streamUrl: string | null): number {
+    const configured = Date.now() + this.settings.get().streamCacheTtlMinutes * 60 * 1000
+    if (!streamUrl) return configured
+    const fromUrl = parseStreamExpiryMs(streamUrl)
+    if (fromUrl === null) return configured
+    return Math.min(configured, fromUrl)
   }
 
   /**
    * First search hit (ytsearchN / scsearchN or URL).
-   * Used for Spotify import matching and command palette.
+   * Used for Spotify import matching.
    */
   async getFirstSearchCandidate(sourceArg: string): Promise<TrackCandidate | null> {
     const result = await this.runYtdlp(
@@ -157,28 +205,90 @@ export class ResolverService {
     return null
   }
 
-  async search(text: string): Promise<TrackCandidate[]> {
-    const query = text.trim()
-    if (!query) {
-      return []
+  /** Stage 1: free-text search returns catalog hits (real songs, not videos). */
+  async search(text: string): Promise<CatalogTrack[]> {
+    return searchCatalog(text)
+  }
+
+  /**
+   * Stage 2: convert a catalog hit into a play-ready TrackCandidate by finding a duration-matched
+   * audio source on YouTube. The candidate's display metadata is taken from the catalog (canonical),
+   * and only the source URL/id come from YouTube.
+   */
+  async resolveCatalog(track: CatalogTrack): Promise<TrackCandidate> {
+    const cacheKey = catalogCacheKey(track)
+    const inflight = this.inFlightCatalog.get(cacheKey)
+    if (inflight) return inflight
+
+    const cached = this.cache.getFresh(cacheKey)
+    if (cached?.candidate) {
+      return cached.candidate
     }
 
-    const source = buildYtsearchArg(query, 10)
+    const promise = this.matchCatalogToYoutube(track, cacheKey).finally(() => {
+      this.inFlightCatalog.delete(cacheKey)
+    })
+    this.inFlightCatalog.set(cacheKey, promise)
+    return promise
+  }
+
+  private async matchCatalogToYoutube(
+    track: CatalogTrack,
+    cacheKey: string
+  ): Promise<TrackCandidate> {
+    const query = `${track.artist} ${track.title}`.trim()
+    const sourceArg = buildYtsearchArg(query, STAGE2_SEARCH_LIMIT)
     const result = await this.runYtdlp(
-      ["--dump-single-json", "--flat-playlist", "--no-warnings", source],
+      ["--dump-single-json", "--flat-playlist", "--no-warnings", sourceArg],
       this.settings.get().resolverTimeoutMs
     )
-    const entries = Array.isArray(result.entries) ? result.entries : []
-    const candidates = entries
-      .sort((left, right) => scoreSearchEntry(right, query) - scoreSearchEntry(left, query))
-      .map((entry) => this.toCandidate(entry, entry.webpage_url ?? entry.url ?? query))
-      .filter((candidate) => candidate.provider === "youtube")
-
-    for (const candidate of candidates) {
-      this.primeCandidate(candidate)
+    const entries = (Array.isArray(result.entries) ? result.entries : []) as MatcherEntry[]
+    const best = pickBestMatch(entries, track)
+    if (!best) {
+      throw new Error(`Couldn't find a clean audio source for "${track.title}" by ${track.artist}.`)
     }
 
-    return candidates
+    const candidate = this.fromMatchedEntry(best.entry, track)
+    const expiresAt = this.metadataExpiresAt()
+    this.cache.setResolved(cacheKey, {
+      candidate,
+      streamUrl: null,
+      expiresAt,
+      streamExpiresAt: null,
+    })
+    this.cache.setResolved(candidate.sourceUrl, {
+      candidate,
+      streamUrl: null,
+      expiresAt,
+      streamExpiresAt: null,
+    })
+    // Pre-fire stream URL fetch in parallel with the renderer round-trip so that, by the time
+    // the user's queue.add({playNow:true}) call comes back through resolve(), the stream URL is
+    // (often) already cached — turning two sequential yt-dlp calls into one perceived call.
+    void this.fillStreamUrl(candidate.sourceUrl, candidate).catch(() => {
+      // failure is non-fatal — resolve() will retry through the normal cache-miss path
+    })
+    return candidate
+  }
+
+  private fromMatchedEntry(entry: MatcherEntry, track: CatalogTrack): TrackCandidate {
+    const ytEntry: YtdlpEntry = {
+      id: entry.id,
+      title: entry.title,
+      uploader: entry.uploader,
+      duration: entry.duration,
+      webpage_url: entry.webpage_url,
+      url: entry.url,
+      view_count: entry.view_count,
+    }
+    const ytCandidate = this.toCandidate(ytEntry, entry.webpage_url ?? entry.url ?? "")
+    return {
+      ...ytCandidate,
+      title: track.title,
+      artist: track.artist,
+      durationMs: track.durationMs,
+      thumbnailUrl: track.artworkUrl ?? ytCandidate.thumbnailUrl,
+    }
   }
 
   async listPlaylist(inputUrl: string): Promise<TrackCandidate[]> {
@@ -198,15 +308,16 @@ export class ResolverService {
     const sourceTrackCount = entries.length
     const limited = entries.slice(0, maxTracks)
     const settings = this.settings.get()
-    const tracks = await Promise.all(
-      limited.map(async (entry) => {
-        const c = this.toCandidate(entry, entry.webpage_url ?? entry.url ?? inputUrl)
-        if (settings.metadataEnrichmentEnabled) {
-          return enrichTrackCandidate(c, { minScore: settings.metadataMinScore })
-        }
-        return c
-      })
+    const tracks = limited.map((entry) =>
+      this.toCandidate(entry, entry.webpage_url ?? entry.url ?? inputUrl)
     )
+    if (settings.metadataEnrichmentEnabled) {
+      // Enrich in the background — the renderer/import pipeline gets raw candidates immediately
+      // and the cache + library are updated when each enrichment lands.
+      for (const candidate of tracks) {
+        this.enrichInBackground(candidate.sourceUrl, candidate, null)
+      }
+    }
     return {
       title: result.title?.trim() || "Imported Playlist",
       tracks,
@@ -328,134 +439,25 @@ function extractYoutubeId(value: string): string | null {
   return watchMatch?.[1] ?? null
 }
 
-function scoreSearchEntry(entry: YtdlpEntry, rawQuery: string): number {
-  const query = rawQuery.trim().toLowerCase()
-  const title = (entry.title ?? "").toLowerCase()
-  const artist = (entry.artist ?? "").toLowerCase()
-  const uploader = (entry.uploader ?? "").toLowerCase()
-  const haystack = `${title} ${artist} ${uploader}`.trim()
-  const queryTokens = tokenizeSearchText(query)
-
-  let score = 0
-
-  if (!haystack) return score
-  if (query && title.includes(query)) score += 20
-
-  const titleTokens = new Set(tokenizeSearchText(title))
-  const artistTokens = new Set(tokenizeSearchText(artist))
-  const uploaderTokens = new Set(tokenizeSearchText(uploader))
-
-  let matchedTitleTokens = 0
-  let matchedArtistTokens = 0
-  let matchedUploaderTokens = 0
-
-  for (const token of queryTokens) {
-    if (titleTokens.has(token)) matchedTitleTokens += 1
-    if (artistTokens.has(token)) matchedArtistTokens += 1
-    if (uploaderTokens.has(token)) matchedUploaderTokens += 1
-  }
-
-  score += matchedTitleTokens * 8
-  score += matchedArtistTokens * 10
-  score += matchedUploaderTokens * 5
-
-  if (queryTokens.length > 0) {
-    const covered = new Set([
-      ...queryTokens.filter((token) => titleTokens.has(token) || artistTokens.has(token)),
-    ]).size
-    score += (covered / queryTokens.length) * 18
-  }
-
-  if (isLikelyOfficialAudio(title, uploader)) score += 18
-  if (isLikelyOfficialChannel(artist, uploader, queryTokens)) score += 16
-  if (title.includes("official music video")) score += 6
-  if (title.includes("official video")) score += 4
-
-  score -= noisePenalty(title, uploader)
-  score += durationScore(entry.duration)
-
-  return score
+function catalogCacheKey(track: CatalogTrack): string {
+  return `catalog:${track.catalogProvider}:${track.catalogId}`
 }
 
-function tokenizeSearchText(value: string): string[] {
-  return value
-    .toLowerCase()
-    .replace(/&/g, " ")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .split(/\s+/)
-    .filter((token) => token.length >= 2)
-}
-
-function isLikelyOfficialAudio(title: string, uploader: string): boolean {
-  return (
-    title.includes("official audio") ||
-    title.includes("[official audio]") ||
-    title.includes("(official audio)") ||
-    uploader.endsWith(" - topic") ||
-    uploader.includes("vevo")
-  )
-}
-
-function isLikelyOfficialChannel(artist: string, uploader: string, queryTokens: string[]): boolean {
-  if (uploader.endsWith(" - topic") || uploader.includes("vevo")) return true
-  if (!uploader) return false
-
-  const uploaderTokens = new Set(tokenizeSearchText(uploader))
-  const artistTokens = tokenizeSearchText(artist)
-  if (artistTokens.length > 0 && artistTokens.every((token) => uploaderTokens.has(token))) {
-    return true
+/**
+ * YouTube googlevideo URLs embed a unix-second `expire=` parameter that reflects the actual
+ * stream URL lifetime (typically ~6h). Returning that as ms-since-epoch lets the cache keep
+ * stream URLs fresh for as long as YouTube allows, instead of always falling back to the much
+ * shorter configured TTL. Returns null when no expiry is detectable.
+ */
+function parseStreamExpiryMs(streamUrl: string): number | null {
+  try {
+    const url = new URL(streamUrl)
+    const expire = url.searchParams.get("expire")
+    if (!expire) return null
+    const seconds = Number.parseInt(expire, 10)
+    if (!Number.isFinite(seconds) || seconds <= 0) return null
+    return seconds * 1000
+  } catch {
+    return null
   }
-
-  const matchedQueryTokens = queryTokens.filter((token) => uploaderTokens.has(token)).length
-  return matchedQueryTokens >= Math.min(2, queryTokens.length)
-}
-
-function noisePenalty(title: string, uploader: string): number {
-  const text = `${title} ${uploader}`
-  let penalty = 0
-
-  const strongNegativeTerms = [
-    "lyrics",
-    "lyric video",
-    "sped up",
-    "slowed",
-    "nightcore",
-    "remix",
-    "cover",
-    "reaction",
-    "live",
-    "concert",
-    "karaoke",
-    "instrumental",
-    "8d",
-    "amv",
-    "edit",
-    "fan made",
-    "fanmade",
-    "clip",
-    "shorts",
-    "fast verse",
-    "bass boosted",
-    "reverb",
-    "mashup",
-  ]
-  const softNegativeTerms = ["official music video", "official video", "visualizer", "animated"]
-
-  for (const term of strongNegativeTerms) {
-    if (text.includes(term)) penalty += 14
-  }
-  for (const term of softNegativeTerms) {
-    if (text.includes(term)) penalty += 4
-  }
-
-  return penalty
-}
-
-function durationScore(durationSeconds: number | undefined): number {
-  if (typeof durationSeconds !== "number" || Number.isNaN(durationSeconds)) return 0
-  if (durationSeconds < 90) return -18
-  if (durationSeconds < 150) return -8
-  if (durationSeconds <= 420) return 6
-  if (durationSeconds <= 540) return 2
-  return -6
 }
