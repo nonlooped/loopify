@@ -1,7 +1,17 @@
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import type { UpdateStatus, UpdateStatusPhase } from "../../shared/contracts/ipc"
 
-export function isUpdaterSupported(platform: NodeJS.Platform, isPackaged: boolean): boolean {
-  return isPackaged && (platform === "win32" || platform === "darwin")
+export function hasUpdaterConfig(resourcesPath: string): boolean {
+  return existsSync(join(resourcesPath, "app-update.yml"))
+}
+
+export function isUpdaterSupported(
+  platform: NodeJS.Platform,
+  isPackaged: boolean,
+  resourcesPath: string
+): boolean {
+  return isPackaged && (platform === "win32" || platform === "darwin") && hasUpdaterConfig(resourcesPath)
 }
 
 export function createUpdateStatus(

@@ -1,6 +1,6 @@
 {
   "name": "loopify-desktop",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Personal desktop music app for resolving, queueing, and playing online sources.",
   "author": "Loopify",
   "type": "module",
@@ -12,6 +12,7 @@
     "dist:win": "pnpm run build && electron-builder --win nsis",
     "dist:mac": "pnpm run build && electron-builder --mac",
     "dist:win:dir": "pnpm run build && electron-builder --win dir",
+    "smoke:win": "pnpm run build && electron-builder --win dir --publish never -c.win.signAndEditExecutable=false",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

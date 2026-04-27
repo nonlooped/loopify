@@ -1,7 +1,7 @@
 import { app } from "electron"
 import electronUpdater, { type AppUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater"
 import type { UpdateStatus } from "../../shared/contracts/ipc"
-import { createUpdateStatus, isUpdaterSupported, normalizeVersion } from "./update-status"
+import { createUpdateStatus, hasUpdaterConfig, isUpdaterSupported, normalizeVersion } from "./update-status"
 
 const { autoUpdater } = electronUpdater
 
@@ -11,14 +11,12 @@ export class UpdaterService {
   private readonly updater: AppUpdater
   private readonly listeners = new Set<UpdateStatusListener>()
   private readonly currentVersion = app.getVersion()
-  private readonly supported = isUpdaterSupported(process.platform, app.isPackaged)
+  private readonly supported = isUpdaterSupported(process.platform, app.isPackaged, process.resourcesPath)
 
   private status: UpdateStatus = this.supported
     ? createUpdateStatus(this.currentVersion, "idle")
     : createUpdateStatus(this.currentVersion, "unsupported", {
-        message: app.isPackaged
-          ? "Updates are only supported on the packaged Windows and macOS builds."
-          : "Updates are only available in packaged builds.",
+        message: getUnsupportedMessage(),
       })
 
   private availableVersion: string | null = null
@@ -179,6 +177,19 @@ export class UpdaterService {
       listener(next)
     }
   }
+}
+
+function getUnsupportedMessage(): string {
+  if (!app.isPackaged) {
+    return "Updates are only available in packaged builds."
+  }
+  if (process.platform !== "win32" && process.platform !== "darwin") {
+    return "Updates are only supported on the packaged Windows and macOS builds."
+  }
+  if (!hasUpdaterConfig(process.resourcesPath)) {
+    return "Updates are unavailable in local smoke builds. Install a release build to test updates."
+  }
+  return "Updates are unavailable in this build."
 }
 
 function getReleaseVersion(info: UpdateInfo): string | null {
