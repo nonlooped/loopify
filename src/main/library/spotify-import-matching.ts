@@ -1,4 +1,5 @@
 import type { TrackCandidate } from "../../shared/types/music"
+import { searchCatalog } from "../catalog/catalog-search"
 import { enrichTrackCandidate } from "../metadata/catalog-enrichment"
 import { buildScsearchArg, buildYtsearchArg } from "../music/query-builders"
 import type { ResolverService } from "../resolver/resolver-service"
@@ -104,12 +105,22 @@ export async function matchSpotifyRowToCandidate(
 ): Promise<TrackCandidate | null> {
   const q = [row.title, row.artist].filter(Boolean).join(" ").trim()
   if (!q) return null
+
+  // Race the canonical catalog path (iTunes/Deezer → YouTube) against the YouTube-first fallback
+  // so a slow catalog hit doesn't gate the whole import. Catalog wins when it qualifies (it's
+  // the more reliable source); otherwise the YouTube result is used; SoundCloud is last resort.
   const ytQ = buildYtsearchArg(q, 1)
-  const yt = await withTimeout(
+  const catalogPromise = resolveViaCatalog(resolver, row, q, threshold)
+  const ytPromise = withTimeout(
     resolver.getFirstSearchCandidate(ytQ),
     SEARCH_TIMEOUT_MS,
     "search timed out"
   ).catch(() => null)
+
+  const catalogResult = await catalogPromise
+  if (catalogResult) return catalogResult
+
+  const yt = await ytPromise
   if (yt) {
     const s = trackMatchScore(row, {
       title: yt.title,
@@ -120,6 +131,7 @@ export async function matchSpotifyRowToCandidate(
       return finalizeSpotifyMatch(yt, row, metadata)
     }
   }
+
   const scQ = buildScsearchArg(q, 1)
   const sc = await withTimeout(
     resolver.getFirstSearchCandidate(scQ),
@@ -136,7 +148,44 @@ export async function matchSpotifyRowToCandidate(
       return finalizeSpotifyMatch(sc, row, metadata)
     }
   }
+
   return null
+}
+
+async function resolveViaCatalog(
+  resolver: ResolverService,
+  row: SpotifyRow,
+  query: string,
+  threshold: number
+): Promise<TrackCandidate | null> {
+  try {
+    const catalogHits = await withTimeout(
+      searchCatalog(query),
+      SEARCH_TIMEOUT_MS,
+      "catalog search timed out"
+    )
+    const topHit = catalogHits[0]
+    if (!topHit) return null
+    const catalogScore = trackMatchScore(row, {
+      title: topHit.title,
+      artist: topHit.artist,
+      durationSec: topHit.durationMs / 1000,
+    })
+    if (catalogScore < threshold) return null
+    const candidate = await withTimeout(
+      resolver.resolveCatalog(topHit),
+      SEARCH_TIMEOUT_MS,
+      "source resolution timed out"
+    )
+    return {
+      ...candidate,
+      title: row.title,
+      artist: row.artist?.trim() || candidate.artist,
+      durationMs: row.durationMs ?? candidate.durationMs,
+    }
+  } catch {
+    return null
+  }
 }
 
 export async function matchAllSpotifyRows(
