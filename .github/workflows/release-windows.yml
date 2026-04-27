@@ -32,7 +32,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build installer
-        run: pnpm run dist:win
+        run: |
+          pnpm run build
+          npx electron-builder --win nsis --publish never
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7
