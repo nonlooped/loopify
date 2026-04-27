@@ -1,22 +1,42 @@
+# Dependencies
 node_modules
+
+# Build outputs
 dist
 out
 .vite
+
+# Development
 *.local
-*.log
-data
-*.db
-*.db-shm
-*.db-wal
-.agents
-release
-coverage
 .env
 .env.local
 .env.*.local
 .pnpm-debug.log*
+
+# Database
+data
+*.db
+*.db-shm
+*.db-wal
+
+# AI agents
+.agents
+.claude
+CLAUDE.md
+
+# Testing
+coverage
+
+# Release
+release
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# Docs
 DESIGN.md
 PRODUCT.md
+
+# Lock files
 skills-lock.json
