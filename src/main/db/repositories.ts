@@ -207,6 +207,12 @@ export class LibraryRepository {
       .get(sourceUrl) as DbTrack | undefined
   }
 
+  findTrackRowByCanonicalUrl(canonicalUrl: string): DbTrack | undefined {
+    return this.db.prepare("select * from tracks where canonical_url = ?").get(canonicalUrl) as
+      | DbTrack
+      | undefined
+  }
+
   findTrackRowByProviderSourceId(provider: Provider, sourceId: string): DbTrack | undefined {
     return this.db
       .prepare(

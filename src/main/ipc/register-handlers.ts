@@ -316,9 +316,18 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     deps.library.deletePlaylist(nonEmptyString.parse(id))
   )
   ipcMain.handle(ipcChannels.playlistsAddTrack, async (_event, playlistId, sourceUrl) => {
-    const resolved = await deps.resolver.resolve(nonEmptyString.parse(sourceUrl))
+    const validatedUrl = nonEmptyString.parse(sourceUrl)
+    const validatedPlaylistId = nonEmptyString.parse(playlistId)
+    const existing =
+      deps.library.findTrackRowBySourceUrl(validatedUrl) ??
+      deps.library.findTrackRowByCanonicalUrl(validatedUrl)
+    if (existing) {
+      const track = deps.library.getTrack(existing.id)
+      if (track) return deps.library.addTrackToPlaylist(validatedPlaylistId, track.id, validatedUrl)
+    }
+    const resolved = await deps.resolver.resolve(validatedUrl)
     const track = deps.library.upsertTrack(resolved.candidate)
-    return deps.library.addTrackToPlaylist(nonEmptyString.parse(playlistId), track.id, sourceUrl)
+    return deps.library.addTrackToPlaylist(validatedPlaylistId, track.id, validatedUrl)
   })
   ipcMain.handle(ipcChannels.playlistsRemoveTrack, (_event, playlistId, entryId) =>
     deps.library.removeTrackFromPlaylist(

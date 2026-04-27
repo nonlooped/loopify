@@ -1,3 +1,4 @@
+import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
   CheckCircle2,
@@ -25,6 +26,7 @@ import { Button } from "@/components/Button"
 import { EmptyState } from "@/components/EmptyState"
 import { IconButton } from "@/components/IconButton"
 import { cn } from "@/lib/cn"
+import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { downloadTitle, formatPlaylistMeta, formatTrackDuration } from "@/lib/music-format"
 import { formatModShortcut, searchShortcutProse } from "@/lib/shortcut"
 import { PlaylistArtwork } from "./PlaylistArtwork"
@@ -49,7 +51,6 @@ function playlistCountTransitionName(playlistId: string) {
 interface WorkspaceProps {
   activePlaylist: Playlist | null
   playlists: Playlist[]
-  hasFloatingPlayer?: boolean
   onPlayTrack: (t: Track) => void
   onSelectPlaylist: (id: string | null) => void
   onPlayPlaylist?: (playlist: Playlist) => void
@@ -63,6 +64,7 @@ interface WorkspaceProps {
   onDownloadTrack?: (track: Track) => void
   onRemoveTrackDownload?: (track: Track) => void
   onDownloadPlaylist?: (playlist: Playlist) => void
+  onAddTrackToPlaylist?: (playlistId: string, track: Track) => void
   onOpenSearch?: () => void
   onOpenImport?: () => void
   onCreatePlaylist?: () => void
@@ -71,7 +73,6 @@ interface WorkspaceProps {
 export function Workspace({
   activePlaylist,
   playlists,
-  hasFloatingPlayer = false,
   onPlayTrack,
   onSelectPlaylist,
   onPlayPlaylist,
@@ -85,12 +86,51 @@ export function Workspace({
   onDownloadTrack,
   onRemoveTrackDownload,
   onDownloadPlaylist,
+  onAddTrackToPlaylist,
   onOpenSearch,
   onOpenImport,
   onCreatePlaylist,
 }: WorkspaceProps) {
   const [sortField, setSortField] = useState<PlaylistSortField>("position")
   const [sortDirection, setSortDirection] = useState<PlaylistSortDirection>("asc")
+  const [trackDropPlaylistId, setTrackDropPlaylistId] = useState<string | null>(null)
+
+  const handlePlaylistCardDragOver = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>, playlistId: string) => {
+      if (!onAddTrackToPlaylist) return
+      if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+      setTrackDropPlaylistId(playlistId)
+    },
+    [onAddTrackToPlaylist]
+  )
+
+  const handlePlaylistCardDragLeave = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>, playlistId: string) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+      setTrackDropPlaylistId((id) => (id === playlistId ? null : id))
+    },
+    []
+  )
+
+  const handlePlaylistCardDrop = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>, playlistId: string) => {
+      if (!onAddTrackToPlaylist) return
+      const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
+      if (!raw) return
+      e.preventDefault()
+      setTrackDropPlaylistId(null)
+      try {
+        const track = JSON.parse(raw) as Track
+        onAddTrackToPlaylist(playlistId, track)
+      } catch (err) {
+        console.error("Failed to parse dropped track payload", err)
+      }
+    },
+    [onAddTrackToPlaylist]
+  )
+
   const openPlaylist = useCallback(
     (id: string) => {
       onSelectPlaylist(id)
@@ -114,20 +154,28 @@ export function Workspace({
     (activePlaylist ? !isSystemPlaylistId(activePlaylist.id) : true)
 
   return (
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-10 sm:px-8 sm:pt-12 lg:px-12 lg:pt-16",
-        hasFloatingPlayer ? "pb-36 sm:pb-40 xl:pb-44" : "pb-10 sm:pb-12 lg:pb-16"
-      )}
-    >
+    <div className="flex min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-10 pb-10 sm:px-8 sm:pt-12 sm:pb-12 lg:px-12 lg:pt-16 lg:pb-16">
       {!activePlaylist ? (
         <div
           className="mx-auto w-full max-w-6xl"
           style={{ viewTransitionName: WORKSPACE_VIEW_TRANSITION }}
         >
-          <h1 className="type-heading mb-6 text-foreground sm:mb-8 sm:text-[1.75rem]">
-            Collection
-          </h1>
+          <div className="mb-6 flex flex-col gap-4 sm:mb-8">
+            <h1 className="type-heading m-0 text-foreground sm:text-[1.75rem]">Collection</h1>
+            {onOpenSearch && (
+              <button
+                type="button"
+                onClick={onOpenSearch}
+                className="flex w-full max-w-md cursor-pointer items-center gap-3 rounded-xl border border-border bg-raised px-4 py-3 text-left transition-colors duration-ui ease-out-quart hover:border-white/20 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                <Search className="h-4 w-4 shrink-0 text-subtle" />
+                <span className="type-body-sm text-subtle">Search tracks or paste a URL...</span>
+                <span className="type-meta ml-auto shrink-0 text-subtle">
+                  {formatModShortcut("K")}
+                </span>
+              </button>
+            )}
+          </div>
           {playlists.length === 0 ? (
             <EmptyState
               className="mx-auto max-w-3xl"
@@ -182,7 +230,14 @@ export function Workspace({
                   type="button"
                   key={p.id}
                   onClick={() => openPlaylist(p.id)}
-                  className="group relative aspect-square cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-surface text-left shadow-md transition-transform duration-ui ease-out-quart hover:scale-[1.04] hover:border-border hover:shadow-lg active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
+                  onDragOver={(e) => handlePlaylistCardDragOver(e, p.id)}
+                  onDragLeave={(e) => handlePlaylistCardDragLeave(e, p.id)}
+                  onDrop={(e) => handlePlaylistCardDrop(e, p.id)}
+                  className={cn(
+                    "group relative aspect-square cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-surface text-left shadow-md transition-transform duration-ui ease-out-quart hover:scale-[1.04] hover:border-border hover:shadow-lg active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100",
+                    trackDropPlaylistId === p.id &&
+                      "scale-[1.04] border-accent shadow-lg ring-2 ring-accent/60 ring-offset-2 ring-offset-canvas"
+                  )}
                 >
                   <div className="absolute right-3 top-3 z-20 flex items-center gap-1 opacity-100 transition-opacity duration-ui ease-out-quart sm:right-4 sm:top-4 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 motion-reduce:transition-none motion-reduce:opacity-100">
                     <IconButton
@@ -259,13 +314,26 @@ export function Workspace({
           className="mx-auto w-full max-w-5xl"
           style={{ viewTransitionName: WORKSPACE_VIEW_TRANSITION }}
         >
-          <button
-            type="button"
-            onClick={backToCollection}
-            className="cursor-pointer type-label mb-6 text-muted transition-colors duration-ui ease-out-quart hover:text-foreground sm:mb-8"
-          >
-            ← Back to Collection
-          </button>
+          <div className="mb-6 flex items-center justify-between gap-4 sm:mb-8">
+            <button
+              type="button"
+              onClick={backToCollection}
+              className="cursor-pointer type-label text-muted transition-colors duration-ui ease-out-quart hover:text-foreground"
+            >
+              ← Back to Collection
+            </button>
+            {onOpenSearch && (
+              <button
+                type="button"
+                onClick={onOpenSearch}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-raised px-3 py-2 text-left transition-colors duration-ui ease-out-quart hover:border-white/20 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                <Search className="h-4 w-4 shrink-0 text-subtle" />
+                <span className="type-meta hidden text-subtle sm:inline">Search</span>
+                <span className="type-meta text-subtle">{formatModShortcut("K")}</span>
+              </button>
+            )}
+          </div>
           <div className="mb-6 flex flex-col gap-6 sm:mb-8 sm:flex-row sm:items-end sm:gap-8">
             <div className="h-40 w-40 shrink-0 overflow-hidden rounded-2xl bg-surface shadow-xl sm:h-48 sm:w-48 lg:h-56 lg:w-56">
               <PlaylistArtwork
@@ -349,27 +417,29 @@ export function Workspace({
           </div>
 
           {activePlaylist.tracks && activePlaylist.tracks.length > 0 ? (
-            <>
+            <div className="flex min-h-0 flex-1 flex-col">
               <PlaylistSortControl
                 field={sortField}
                 direction={sortDirection}
                 onFieldChange={setSortField}
                 onDirectionChange={setSortDirection}
               />
-              <PlaylistTracksList
-                playlistId={activePlaylist.id}
-                tracks={activeTracks}
-                onPlayTrack={onPlayTrack}
-                onRemoveTrackFromPlaylist={
-                  isSystemPlaylistId(activePlaylist.id) ? undefined : onRemoveTrackFromPlaylist
-                }
-                onMovePlaylistTrack={canManualReorder ? onMovePlaylistTrack : undefined}
-                onEnqueuePlaylistTrack={onEnqueuePlaylistTrack}
-                onToggleLikeTrack={onToggleLikeTrack}
-                onDownloadTrack={onDownloadTrack}
-                onRemoveTrackDownload={onRemoveTrackDownload}
-              />
-            </>
+              <div className="min-h-0 flex-1">
+                <PlaylistTracksList
+                  playlistId={activePlaylist.id}
+                  tracks={activeTracks}
+                  onPlayTrack={onPlayTrack}
+                  onRemoveTrackFromPlaylist={
+                    isSystemPlaylistId(activePlaylist.id) ? undefined : onRemoveTrackFromPlaylist
+                  }
+                  onMovePlaylistTrack={canManualReorder ? onMovePlaylistTrack : undefined}
+                  onEnqueuePlaylistTrack={onEnqueuePlaylistTrack}
+                  onToggleLikeTrack={onToggleLikeTrack}
+                  onDownloadTrack={onDownloadTrack}
+                  onRemoveTrackDownload={onRemoveTrackDownload}
+                />
+              </div>
+            </div>
           ) : (
             (() => {
               const isSystem = isSystemPlaylistId(activePlaylist.id)
@@ -485,7 +555,7 @@ function PlaylistSortControl({
   onDirectionChange: (direction: PlaylistSortDirection) => void
 }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface/60 p-2 backdrop-blur-md">
+    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-white/[0.03] p-2">
       <span className="type-meta flex items-center gap-2 px-2 text-subtle">
         <ArrowUpDown className="h-4 w-4" />
         Sort
@@ -521,6 +591,9 @@ function PlaylistSortControl({
   )
 }
 
+const VIRTUALIZATION_THRESHOLD = 120
+const TRACK_ROW_ESTIMATE = 56
+
 function PlaylistTracksList({
   playlistId,
   tracks,
@@ -545,8 +618,18 @@ function PlaylistTracksList({
   const [draggingEntryId, setDraggingEntryId] = useState<string | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const draggingEntryRef = useRef<string | null>(null)
+  const parentRef = useRef<HTMLDivElement>(null)
+  const shouldVirtualize = tracks.length > VIRTUALIZATION_THRESHOLD
 
-  const canReorder = Boolean(onMovePlaylistTrack) && tracks.length > 1
+  const virtualizer = useVirtualizer({
+    count: tracks.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => TRACK_ROW_ESTIMATE,
+    overscan: 10,
+    enabled: shouldVirtualize,
+  })
+
+  const canReorder = Boolean(onMovePlaylistTrack) && tracks.length > 1 && !shouldVirtualize
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, entryId: string) => {
@@ -615,33 +698,61 @@ function PlaylistTracksList({
     [onRemoveTrackDownload]
   )
 
+  const renderRow = (track: PlaylistTrackItem, i: number, virtualStyle?: React.CSSProperties) => (
+    <PlaylistTrackRow
+      key={track.playlistEntryId}
+      track={track}
+      index={i}
+      trackCount={tracks.length}
+      onPlayTrack={onPlayTrack}
+      onRemoveEntry={
+        onRemoveTrackFromPlaylist && !isSystemPlaylistId(playlistId) ? removeEntry : undefined
+      }
+      onMoveEntry={onMovePlaylistTrack ? moveEntry : undefined}
+      onEnqueueTrack={onEnqueuePlaylistTrack ? enqueueEntry : undefined}
+      onToggleLikeTrack={onToggleLikeTrack ? toggleLike : undefined}
+      onDownloadTrack={onDownloadTrack ? downloadTrack : undefined}
+      onRemoveTrackDownload={onRemoveTrackDownload ? removeDownload : undefined}
+      isDragging={draggingEntryId === track.playlistEntryId}
+      isDropTarget={dragOverIndex === i && draggingEntryId !== null}
+      onDragHandleStart={(e) => handleDragStart(e, track.playlistEntryId)}
+      onDragHandleEnd={handleDragEnd}
+      onRowDragOver={(e) => handleDragOver(e, i)}
+      onRowDragLeave={(e) => handleDragLeave(e, i)}
+      onRowDrop={(e) => handleDrop(e, i)}
+      virtualStyle={virtualStyle}
+    />
+  )
+
+  if (!shouldVirtualize) {
+    return (
+      <ol aria-label="Playlist tracks" className="m-0 flex list-none flex-col gap-1 p-0">
+        {tracks.map((track, i) => renderRow(track, i))}
+      </ol>
+    )
+  }
+
+  const virtualItems = virtualizer.getVirtualItems()
+
   return (
-    <ol aria-label="Playlist tracks" className="m-0 flex list-none flex-col gap-1 p-0">
-      {tracks.map((track, i) => (
-        <PlaylistTrackRow
-          key={track.playlistEntryId}
-          track={track}
-          index={i}
-          trackCount={tracks.length}
-          onPlayTrack={onPlayTrack}
-          onRemoveEntry={
-            onRemoveTrackFromPlaylist && !isSystemPlaylistId(playlistId) ? removeEntry : undefined
-          }
-          onMoveEntry={onMovePlaylistTrack ? moveEntry : undefined}
-          onEnqueueTrack={onEnqueuePlaylistTrack ? enqueueEntry : undefined}
-          onToggleLikeTrack={onToggleLikeTrack ? toggleLike : undefined}
-          onDownloadTrack={onDownloadTrack ? downloadTrack : undefined}
-          onRemoveTrackDownload={onRemoveTrackDownload ? removeDownload : undefined}
-          isDragging={draggingEntryId === track.playlistEntryId}
-          isDropTarget={dragOverIndex === i && draggingEntryId !== null}
-          onDragHandleStart={(e) => handleDragStart(e, track.playlistEntryId)}
-          onDragHandleEnd={handleDragEnd}
-          onRowDragOver={(e) => handleDragOver(e, i)}
-          onRowDragLeave={(e) => handleDragLeave(e, i)}
-          onRowDrop={(e) => handleDrop(e, i)}
-        />
-      ))}
-    </ol>
+    <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto">
+      <ol
+        aria-label="Playlist tracks"
+        className="m-0 list-none p-0"
+        style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}
+      >
+        {virtualItems.map((virtualItem) => {
+          const track = tracks[virtualItem.index]
+          return renderRow(track, virtualItem.index, {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            transform: `translateY(${virtualItem.start}px)`,
+          })
+        })}
+      </ol>
+    </div>
   )
 }
 
@@ -663,6 +774,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
   onRowDragOver,
   onRowDragLeave,
   onRowDrop,
+  virtualStyle,
 }: {
   track: PlaylistTrackItem
   index: number
@@ -681,6 +793,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
   onRowDragOver: (e: React.DragEvent) => void
   onRowDragLeave: (e: React.DragEvent) => void
   onRowDrop: (e: React.DragEvent) => void
+  virtualStyle?: React.CSSProperties
 }) {
   const [confirmingRemove, setConfirmingRemove] = useState(false)
   const canReorder = Boolean(onMoveEntry) && trackCount > 1
@@ -710,6 +823,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
 
   return (
     <li
+      style={virtualStyle}
       className={cn(
         "[contain-intrinsic-size:3.25rem] [content-visibility:auto] group flex w-full list-none items-center gap-1 rounded-xl border border-transparent px-1 py-2 transition-[colors,transform,box-shadow,opacity] duration-ui ease-out-quart hover:border-border hover:bg-surface",
         isDragging &&

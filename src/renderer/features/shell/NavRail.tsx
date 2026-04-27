@@ -1,8 +1,8 @@
 import {
-  Download,
   HardDrive,
   Heart,
   LayoutGrid,
+  Link,
   ListMusic,
   PanelLeftClose,
   PanelLeftOpen,
@@ -10,11 +10,16 @@ import {
   Search,
   Settings,
 } from "lucide-react"
-import { memo, type ReactNode, useCallback } from "react"
-import { LIKED_SONGS_PLAYLIST_ID, OFFLINE_SONGS_PLAYLIST_ID } from "src/shared/types/music"
+import { memo, type ReactNode, useCallback, useState } from "react"
+import {
+  LIKED_SONGS_PLAYLIST_ID,
+  OFFLINE_SONGS_PLAYLIST_ID,
+  type Track,
+} from "src/shared/types/music"
 import { LoopifyMark } from "@/components/branding/LoopifyMark"
 import { LoopifyWordmark } from "@/components/branding/LoopifyWordmark"
 import { cn } from "@/lib/cn"
+import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { formatModShortcut, formatModShortcutTitle } from "@/lib/shortcut"
 
 const rowBase =
@@ -53,6 +58,7 @@ interface NavRailProps {
   queueLength: number
   isQueueOpen: boolean
   onToggleQueue: () => void
+  onAddTrackToPlaylist?: (playlistId: string, track: Track) => void
 }
 
 function NavRailImpl({
@@ -68,10 +74,45 @@ function NavRailImpl({
   queueLength,
   isQueueOpen,
   onToggleQueue,
+  onAddTrackToPlaylist,
 }: NavRailProps) {
   const atCollection = activePlaylistId == null
   const likedActive = activePlaylistId === LIKED_SONGS_PLAYLIST_ID
   const offlineActive = activePlaylistId === OFFLINE_SONGS_PLAYLIST_ID
+  const [isLikedDropTarget, setIsLikedDropTarget] = useState(false)
+
+  const handleLikedDragOver = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>) => {
+      if (!onAddTrackToPlaylist) return
+      if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+      setIsLikedDropTarget(true)
+    },
+    [onAddTrackToPlaylist]
+  )
+
+  const handleLikedDragLeave = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    setIsLikedDropTarget(false)
+  }, [])
+
+  const handleLikedDrop = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>) => {
+      if (!onAddTrackToPlaylist) return
+      const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
+      setIsLikedDropTarget(false)
+      if (!raw) return
+      e.preventDefault()
+      try {
+        const track = JSON.parse(raw) as Track
+        onAddTrackToPlaylist(LIKED_SONGS_PLAYLIST_ID, track)
+      } catch (err) {
+        console.error("Failed to parse dropped track payload", err)
+      }
+    },
+    [onAddTrackToPlaylist]
+  )
 
   const goToLiked = useCallback(() => onSelectPlaylist(LIKED_SONGS_PLAYLIST_ID), [onSelectPlaylist])
   const goToOffline = useCallback(
@@ -144,6 +185,10 @@ function NavRailImpl({
               onClick={goToLiked}
               title="Liked songs"
               icon={<Heart className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              isDropTarget={isLikedDropTarget}
+              onDragOver={onAddTrackToPlaylist ? handleLikedDragOver : undefined}
+              onDragLeave={onAddTrackToPlaylist ? handleLikedDragLeave : undefined}
+              onDrop={onAddTrackToPlaylist ? handleLikedDrop : undefined}
             />
             <NavRow
               expanded={isExpanded}
@@ -178,7 +223,7 @@ function NavRailImpl({
               selection="none"
               onClick={onOpenImport}
               title="Import a playlist"
-              icon={<Download className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<Link className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
             />
             <NavRow
               expanded={isExpanded}
@@ -271,6 +316,10 @@ function NavRow({
   onClick,
   title,
   icon,
+  isDropTarget,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: {
   expanded: boolean
   label: string
@@ -281,6 +330,10 @@ function NavRow({
   title: string
   icon: ReactNode
   hint?: string
+  isDropTarget?: boolean
+  onDragOver?: (e: React.DragEvent<HTMLButtonElement>) => void
+  onDragLeave?: (e: React.DragEvent<HTMLButtonElement>) => void
+  onDrop?: (e: React.DragEvent<HTMLButtonElement>) => void
 }) {
   const ariaCurrent = selection === "location" && active ? "page" : undefined
   const ariaPressed = selection === "toggle" ? active : undefined
@@ -289,12 +342,19 @@ function NavRow({
     <button
       type="button"
       onClick={onClick}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       title={title}
       aria-label={expanded ? undefined : label}
       aria-current={ariaCurrent}
       aria-pressed={ariaPressed}
       data-active={active || undefined}
-      className={cn(active ? rowActive : rowInteractive, "items-center")}
+      className={cn(
+        active ? rowActive : rowInteractive,
+        "items-center",
+        isDropTarget && "bg-accent/15 ring-2 ring-accent/60"
+      )}
     >
       <span className={iconWrap(active)}>{icon}</span>
       {expanded ? (

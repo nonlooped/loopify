@@ -129,6 +129,7 @@ export function App() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
   const [playlistAction, setPlaylistAction] = useState<PlaylistActionState | null>(null)
   const [shellReveal, setShellReveal] = useState(false)
+  const [queueClearConfirming, setQueueClearConfirming] = useState(false)
   const reducedMotion = usePrefersReducedMotion()
 
   const lastPlayerState = useRef<PlayerState | null>(null)
@@ -274,6 +275,8 @@ export function App() {
         lastPlayerState={lastPlayerState}
         refreshQueue={refreshQueue}
         refreshPlaylists={refreshPlaylists}
+        queueClearConfirming={queueClearConfirming}
+        setQueueClearConfirming={setQueueClearConfirming}
       />
     </div>
   )
@@ -303,6 +306,8 @@ type AppTreeProps = {
   lastPlayerState: React.MutableRefObject<PlayerState | null>
   refreshQueue: () => Promise<QueueItem[]>
   refreshPlaylists: () => Promise<Playlist[]>
+  queueClearConfirming: boolean
+  setQueueClearConfirming: (v: boolean) => void
 }
 
 function AppTree({
@@ -329,6 +334,8 @@ function AppTree({
   lastPlayerState,
   refreshQueue,
   refreshPlaylists,
+  queueClearConfirming,
+  setQueueClearConfirming,
 }: AppTreeProps) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [isCompactShell, setIsCompactShell] = useState(false)
@@ -382,6 +389,12 @@ function AppTree({
     const t = window.setTimeout(() => setActionError(null), 8000)
     return () => window.clearTimeout(t)
   }, [actionError])
+
+  useEffect(() => {
+    if (!queueClearConfirming) return
+    const t = window.setTimeout(() => setQueueClearConfirming(false), 3000)
+    return () => window.clearTimeout(t)
+  }, [queueClearConfirming, setQueueClearConfirming])
 
   useEffect(() => {
     const unsubscribe = window.loopify.downloads.onChange((track) => {
@@ -531,6 +544,19 @@ function AppTree({
       }
     },
     [refreshPlaylists, setQueue]
+  )
+
+  const handleAddTrackToPlaylist = useCallback(
+    async (playlistId: string, track: Track) => {
+      try {
+        const updated = await window.loopify.playlists.addTrack(playlistId, track.canonicalUrl)
+        setPlaylists(updated)
+      } catch (err) {
+        console.error(err)
+        setActionError(formatActionError(err, "Could not add that track to the playlist."))
+      }
+    },
+    [setPlaylists]
   )
 
   const handleLikeCandidate = useCallback(
@@ -859,9 +885,13 @@ function AppTree({
 
   const handleClearQueueShortcut = useCallback(async () => {
     if (queue.length === 0) return
-    if (!window.confirm("Clear the entire queue? This cannot be undone.")) return
+    if (!queueClearConfirming) {
+      setQueueClearConfirming(true)
+      return
+    }
+    setQueueClearConfirming(false)
     await queueOnClear()
-  }, [queue.length, queueOnClear])
+  }, [queue.length, queueOnClear, queueClearConfirming, setQueueClearConfirming])
 
   useAppKeyboardShortcuts({
     onOpenSearch: () => setIsSearchOpen(true),
@@ -924,6 +954,7 @@ function AppTree({
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenImport={() => setIsImportOpen(true)}
         onCreatePlaylist={handleCreatePlaylist}
+        onAddTrackToPlaylist={handleAddTrackToPlaylist}
         queueLength={queue.length}
         isQueueOpen={isQueueOpen}
         onToggleQueue={onToggleQueue}
@@ -934,7 +965,6 @@ function AppTree({
           <Workspace
             activePlaylist={activePlaylist}
             playlists={playlists}
-            hasFloatingPlayer={hasFloatingPlayer}
             onPlayTrack={handlePlayTrack}
             onSelectPlaylist={selectPlaylistWithTransition}
             onPlayPlaylist={handlePlayPlaylist}
@@ -948,6 +978,7 @@ function AppTree({
             onDownloadTrack={handleDownloadTrack}
             onRemoveTrackDownload={handleRemoveTrackDownload}
             onDownloadPlaylist={handleDownloadPlaylist}
+            onAddTrackToPlaylist={handleAddTrackToPlaylist}
             onOpenSearch={() => setIsSearchOpen(true)}
             onOpenImport={() => setIsImportOpen(true)}
             onCreatePlaylist={handleCreatePlaylist}
@@ -957,10 +988,10 @@ function AppTree({
             <div
               onTransitionEnd={onFloatingPlayerTransitionEnd}
               className={cn(
-                "pointer-events-none absolute inset-0 z-30 transition-[opacity,transform,filter] duration-modal ease-out-quart motion-reduce:transition-none",
+                "relative shrink-0 z-30 transition-[opacity,transform] duration-modal ease-out-quart motion-reduce:transition-none",
                 showFloatingPlayer
-                  ? "opacity-100 translate-y-0 scale-100 blur-0"
-                  : "opacity-0 translate-y-4 scale-[0.985] blur-[6px]"
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-4 pointer-events-none"
               )}
             >
               <FloatingIsland
@@ -1002,6 +1033,8 @@ function AppTree({
             onToggleLikeTrack={handleToggleLikeTrack}
             onDownloadTrack={handleDownloadTrack}
             onRemoveTrackDownload={handleRemoveTrackDownload}
+            confirmClear={queueClearConfirming}
+            onSetConfirmClear={setQueueClearConfirming}
           />
         </Suspense>
       </div>
