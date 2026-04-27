@@ -50,6 +50,22 @@ export type TrackCandidate = {
   extractor: string | null
 }
 
+export type CatalogProvider = "itunes" | "deezer"
+
+/** A song-level result from a music catalog (iTunes / Deezer). Distinct from TrackCandidate, which is
+ *  source-resolved (has a playable provider URL). Catalog hits become candidates only after stage-2
+ *  resolution finds an audio source for them. */
+export type CatalogTrack = {
+  catalogProvider: CatalogProvider
+  catalogId: string
+  title: string
+  artist: string
+  album: string | null
+  artworkUrl: string | null
+  durationMs: number
+  isrc: string | null
+}
+
 export type ResolvedTrack = {
   candidate: TrackCandidate
   streamUrl: string | null
