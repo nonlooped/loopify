@@ -29,6 +29,8 @@ interface QueueOverlayProps {
   onToggleLikeTrack: (track: Track) => void
   onDownloadTrack: (track: Track) => void
   onRemoveTrackDownload: (track: Track) => void
+  confirmClear?: boolean
+  onSetConfirmClear?: (v: boolean) => void
 }
 
 function QueueOverlayImpl({
@@ -43,18 +45,23 @@ function QueueOverlayImpl({
   onToggleLikeTrack,
   onDownloadTrack,
   onRemoveTrackDownload,
+  confirmClear: externalConfirmClear,
+  onSetConfirmClear,
 }: QueueOverlayProps) {
-  const [confirmClear, setConfirmClear] = useState(false)
+  const [internalConfirmClear, setInternalConfirmClear] = useState(false)
+  const confirmClear = externalConfirmClear ?? internalConfirmClear
+  const setConfirmClear = onSetConfirmClear ?? setInternalConfirmClear
 
   useEffect(() => {
+    if (onSetConfirmClear) return // external owner handles the timeout
     if (!confirmClear) return
     const t = window.setTimeout(() => setConfirmClear(false), 3000)
     return () => window.clearTimeout(t)
-  }, [confirmClear])
+  }, [confirmClear, setConfirmClear, onSetConfirmClear])
 
   useEffect(() => {
     if (!isOpen) setConfirmClear(false)
-  }, [isOpen])
+  }, [isOpen, setConfirmClear])
 
   const handleClear = () => {
     if (queue.length === 0) return
