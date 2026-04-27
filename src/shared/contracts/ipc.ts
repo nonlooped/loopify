@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  CatalogTrack,
   ImportJob,
   LyricsState,
   PlayerState,
@@ -65,10 +66,11 @@ export type LoopifyApi = {
     onStateChange: (listener: (state: PlayerState) => void) => () => void
   }
   search: {
-    query: (input: SearchQuery) => Promise<TrackCandidate[]>
+    query: (input: SearchQuery) => Promise<CatalogTrack[]>
   }
   resolver: {
     resolve: (input: string) => Promise<ResolvedTrack>
+    resolveCatalog: (track: CatalogTrack) => Promise<TrackCandidate>
   }
   queue: {
     list: () => Promise<QueueItem[]>
@@ -132,6 +134,7 @@ export const ipcChannels = {
   playerSetRepeatMode: "player:set-repeat-mode",
   searchQuery: "search:query",
   resolverResolve: "resolver:resolve",
+  resolverResolveCatalog: "resolver:resolve-catalog",
   queueChanged: "queue:changed",
   queueList: "queue:list",
   queueAdd: "queue:add",

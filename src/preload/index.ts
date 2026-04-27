@@ -24,6 +24,7 @@ const api: LoopifyApi = {
   },
   resolver: {
     resolve: (input) => ipcRenderer.invoke(ipcChannels.resolverResolve, input),
+    resolveCatalog: (track) => ipcRenderer.invoke(ipcChannels.resolverResolveCatalog, track),
   },
   queue: {
     list: () => ipcRenderer.invoke(ipcChannels.queueList),

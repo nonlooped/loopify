@@ -3,6 +3,7 @@ import { app, type BrowserWindow, ipcMain } from "electron"
 import { z } from "zod"
 import { ipcChannels } from "../../shared/contracts/ipc"
 import type {
+  CatalogTrack,
   PlayerTrack,
   QueueItem,
   RepeatMode,
@@ -34,6 +35,16 @@ type HandlerDeps = {
 
 const nonEmptyString = z.string().trim().min(1)
 const nullableNonEmptyString = z.string().trim().min(1).nullable()
+const catalogTrackSchema = z.object({
+  catalogProvider: z.enum(["itunes", "deezer"]),
+  catalogId: nonEmptyString,
+  title: nonEmptyString,
+  artist: nonEmptyString,
+  album: z.string().nullable(),
+  artworkUrl: z.string().nullable(),
+  durationMs: z.number().int().positive(),
+  isrc: z.string().nullable(),
+})
 const providerSchema = z.enum(["youtube", "soundcloud", "bandcamp", "direct", "unknown"])
 const playerTrackSchema = z.object({
   id: z.string().optional(),
@@ -106,6 +117,24 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       })
   }
 
+  const prefetchNextQueueItem = (afterId: string): void => {
+    const nextId = deps.queue.nextItemId(afterId)
+    if (!nextId) return
+    const next = deps.queue.get(nextId)
+    if (!next) return
+    // Only prefetch if it doesn't already have a resolved track joined in.
+    if (next.track) return
+    if (next.status === "resolving" || next.status === "ready") return
+    resolveQueueItemInBackground({ id: next.id, sourceUrl: next.sourceUrl })
+  }
+
+  // When the resolver finishes background metadata enrichment, refresh the library row and
+  // re-emit the queue so any rendered queue items pick up the corrected title/artwork.
+  deps.resolver.setOnCandidateEnriched((_sourceUrl, candidate) => {
+    deps.library.upsertTrack(candidate)
+    emitQueue()
+  })
+
   const playQueueItem = async (queueItemId: string) => {
     const item = deps.queue.get(nonEmptyString.parse(queueItemId))
     if (!item) throw new Error("Queue item was not found.")
@@ -115,7 +144,9 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       deps.queue.clearPlaying()
       deps.queue.setTrack(item.id, item.track.id, "playing")
       emitQueue()
-      return deps.player.play(downloadedPath, item.id, item.track)
+      const result = await deps.player.play(downloadedPath, item.id, item.track)
+      prefetchNextQueueItem(item.id)
+      return result
     }
 
     deps.queue.setStatus(item.id, "resolving")
@@ -133,7 +164,9 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       deps.queue.clearPlaying()
       deps.queue.setTrack(item.id, track.id, "playing")
       emitQueue()
-      return deps.player.play(playbackPath, item.id, track)
+      const result = await deps.player.play(playbackPath, item.id, track)
+      prefetchNextQueueItem(item.id)
+      return result
     } catch (error) {
       deps.queue.setStatus(item.id, "failed")
       emitQueue()
@@ -199,6 +232,9 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   })
   ipcMain.handle(ipcChannels.resolverResolve, (_event, input) =>
     deps.resolver.resolve(nonEmptyString.parse(input))
+  )
+  ipcMain.handle(ipcChannels.resolverResolveCatalog, (_event, input) =>
+    deps.resolver.resolveCatalog(catalogTrackSchema.parse(input) as CatalogTrack)
   )
 
   ipcMain.handle(ipcChannels.queueList, () => deps.queue.list())
