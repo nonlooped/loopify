@@ -267,12 +267,19 @@ export class ImportService {
       phase: "saving",
     }
     let saved = 0
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i]
-      try {
+
+    const saveOne = this.library
+      .getDatabaseConnection()
+      .transaction((candidate: TrackCandidate) => {
         this.resolver.primeCandidate(candidate)
         const track = this.library.upsertTrack(candidate)
         this.library.addTrackToPlaylistRecord(targetPlaylistId, track.id, candidate.sourceUrl)
+      })
+
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i]
+      try {
+        saveOne(candidate)
         saved += 1
         j = this.update(j, {
           completed: saved,
