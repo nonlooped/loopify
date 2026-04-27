@@ -147,6 +147,8 @@ async function createWindow(): Promise<void> {
   } else {
     await window.loadFile(join(__dirname, "../renderer/index.html"))
   }
+
+  void updater.checkForUpdates()
 }
 
 app.whenReady().then(createWindow)
