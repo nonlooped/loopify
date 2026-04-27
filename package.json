@@ -11,7 +11,9 @@
     "build": "electron-vite build",
     "dist:win": "pnpm run build && electron-builder --win nsis",
     "dist:mac": "pnpm run build && electron-builder --mac",
+    "dist:linux": "pnpm run build && electron-builder --linux",
     "dist:win:dir": "pnpm run build && electron-builder --win dir",
+    "dist:linux:dir": "pnpm run build && electron-builder --linux dir",
     "smoke:win": "pnpm run build && electron-builder --win dir --publish never -c.win.signAndEditExecutable=false",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
@@ -85,6 +87,24 @@
         "dmg",
         "zip"
       ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Loopify-${version}-linux.${ext}",
+      "category": "AudioVideo;Audio;Player"
     },
     "nsis": {
       "oneClick": false,
