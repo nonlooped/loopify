@@ -75,7 +75,7 @@ async function createWindow(): Promise<void> {
   dbConnection = db
   const settings = new SettingsRepository(db)
   const library = new LibraryRepository(db)
-  const queue = new QueueRepository(db, library)
+  const queue = new QueueRepository(db)
   queue.clear()
   queueRepository = queue
   const resolverCache = new ResolverCacheRepository(db)

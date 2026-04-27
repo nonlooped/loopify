@@ -138,6 +138,7 @@ function runMigrations(db: DatabaseConnection): void {
     );
   `)
 
+  createIndexes(db)
   ensureImportsColumns(db)
   ensureTrackColumns(db)
   ensureResolverCacheStreamColumns(db)
@@ -145,6 +146,20 @@ function runMigrations(db: DatabaseConnection): void {
 
   const dbDir = dirname(db.name)
   mkdirSync(dbDir, { recursive: true })
+}
+
+function createIndexes(db: DatabaseConnection): void {
+  db.exec(`
+    create index if not exists idx_tracks_canonical_url on tracks(canonical_url);
+    create index if not exists idx_tracks_liked_at on tracks(liked_at) where liked_at is not null;
+    create index if not exists idx_tracks_download_status on tracks(download_status) where download_status = 'downloaded';
+    create index if not exists idx_track_sources_track_id on track_sources(track_id);
+    create index if not exists idx_resolver_cache_source_url on resolver_cache(source_url);
+    create index if not exists idx_playlist_tracks_playlist_id on playlist_tracks(playlist_id, sort_order, added_at);
+    create index if not exists idx_queue_items_sort_order on queue_items(sort_order, created_at);
+    create index if not exists idx_imports_status on imports(status);
+    create index if not exists idx_lyrics_cache_id on lyrics_cache(id);
+  `)
 }
 
 function ensureTrackColumns(db: DatabaseConnection): void {

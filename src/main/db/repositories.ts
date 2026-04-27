@@ -101,6 +101,10 @@ export class SettingsRepository {
 export class LibraryRepository {
   constructor(private readonly db: DatabaseConnection) {}
 
+  getDatabaseConnection(): DatabaseConnection {
+    return this.db
+  }
+
   upsertTrack(candidate: TrackCandidate): Track {
     const existing = this.findTrackRowBySourceUrl(candidate.sourceUrl)
     const existingById =
@@ -232,11 +236,43 @@ export class LibraryRepository {
     const rows = this.db
       .prepare("select * from playlists order by sort_order asc, created_at asc")
       .all() as DbPlaylist[]
+
+    const playlistIds = rows.map((r) => r.id)
+    const tracksByPlaylist = new Map<string, PlaylistTrackItem[]>()
+
+    if (playlistIds.length > 0) {
+      const placeholders = playlistIds.map(() => "?").join(",")
+      const trackRows = this.db
+        .prepare(
+          `select pt.playlist_id,
+            pt.id as playlist_entry_id,
+            pt.added_at,
+            t.id, t.title, t.artist, t.album, t.duration_ms, t.thumbnail_url, t.canonical_url, t.provider,
+            t.liked_at, t.download_status, t.download_progress, t.downloaded_file_path, t.download_error, t.downloaded_at,
+            t.created_at, t.updated_at
+          from playlist_tracks pt
+          join tracks t on t.id = pt.track_id
+          where pt.playlist_id in (${placeholders})
+          order by pt.sort_order asc, pt.added_at asc`
+        )
+        .all(...playlistIds) as (DbTrack & {
+        playlist_id: string
+        playlist_entry_id: string
+        added_at: number
+      })[]
+
+      for (const row of trackRows) {
+        const list = tracksByPlaylist.get(row.playlist_id) ?? []
+        list.push(mapPlaylistTrackRow(row))
+        tracksByPlaylist.set(row.playlist_id, list)
+      }
+    }
+
     return [
       this.getLikedSongsPlaylist(),
       this.getOfflineSongsPlaylist(),
       ...rows.map((row) => {
-        const tracks = this.listPlaylistTracks(row.id)
+        const tracks = tracksByPlaylist.get(row.id) ?? []
         return {
           id: row.id,
           name: row.name,
@@ -584,24 +620,26 @@ export class LibraryRepository {
 }
 
 export class QueueRepository {
-  constructor(
-    private readonly db: DatabaseConnection,
-    private readonly library: LibraryRepository
-  ) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
   list(): QueueItem[] {
     const rows = this.db
-      .prepare("select * from queue_items order by sort_order asc, created_at asc")
-      .all() as DbQueueItem[]
-    return rows.map((row) => ({
-      id: row.id,
-      trackId: row.track_id,
-      sourceUrl: row.source_url,
-      sortOrder: row.sort_order,
-      status: row.status as QueueItem["status"],
-      createdAt: row.created_at,
-      track: row.track_id ? this.library.getTrack(row.track_id) : null,
-    }))
+      .prepare(
+        `select
+          q.id, q.track_id, q.source_url, q.sort_order, q.status, q.created_at,
+          t.id as t_id, t.title as t_title, t.artist as t_artist, t.album as t_album,
+          t.duration_ms as t_duration_ms, t.thumbnail_url as t_thumbnail_url,
+          t.canonical_url as t_canonical_url, t.provider as t_provider,
+          t.liked_at as t_liked_at, t.download_status as t_download_status,
+          t.download_progress as t_download_progress, t.downloaded_file_path as t_downloaded_file_path,
+          t.download_error as t_download_error, t.downloaded_at as t_downloaded_at,
+          t.created_at as t_created_at, t.updated_at as t_updated_at
+        from queue_items q
+        left join tracks t on t.id = q.track_id
+        order by q.sort_order asc, q.created_at asc`
+      )
+      .all() as DbQueueItemJoinRow[]
+    return rows.map(mapQueueItemRow)
   }
 
   add(sourceUrl: string, trackId: string | null = null): QueueItem[] {
@@ -722,18 +760,36 @@ export class QueueRepository {
   }
 
   get(queueItemId: string): QueueItem | null {
-    return this.list().find((item) => item.id === queueItemId) ?? null
+    const row = this.db
+      .prepare(
+        `select
+          q.id, q.track_id, q.source_url, q.sort_order, q.status, q.created_at,
+          t.id as t_id, t.title as t_title, t.artist as t_artist, t.album as t_album,
+          t.duration_ms as t_duration_ms, t.thumbnail_url as t_thumbnail_url,
+          t.canonical_url as t_canonical_url, t.provider as t_provider,
+          t.liked_at as t_liked_at, t.download_status as t_download_status,
+          t.download_progress as t_download_progress, t.downloaded_file_path as t_downloaded_file_path,
+          t.download_error as t_download_error, t.downloaded_at as t_downloaded_at,
+          t.created_at as t_created_at, t.updated_at as t_updated_at
+        from queue_items q
+        left join tracks t on t.id = q.track_id
+        where q.id = ?`
+      )
+      .get(queueItemId) as DbQueueItemJoinRow | undefined
+    return row ? mapQueueItemRow(row) : null
   }
 
   /** Next queue item in sort order, or `null` if `afterId` is last / missing. */
   nextItemId(afterId: string): string | null {
-    const list = this.list()
-    const index = list.findIndex((item) => item.id === afterId)
-    if (index < 0) {
-      return null
-    }
-    const next = list[index + 1]
-    return next?.id ?? null
+    const row = this.db
+      .prepare(
+        `select id from queue_items
+         where sort_order > (select sort_order from queue_items where id = ?)
+         order by sort_order asc, created_at asc
+         limit 1`
+      )
+      .get(afterId) as { id: string } | undefined
+    return row?.id ?? null
   }
 }
 
@@ -1052,6 +1108,25 @@ type DbImport = {
   error_message: string | null
 }
 
+type DbQueueItemJoinRow = DbQueueItem & {
+  t_id: string | null
+  t_title: string | null
+  t_artist: string | null
+  t_album: string | null
+  t_duration_ms: number | null
+  t_thumbnail_url: string | null
+  t_canonical_url: string | null
+  t_provider: Provider | null
+  t_liked_at: number | null
+  t_download_status: string | null
+  t_download_progress: number | null
+  t_downloaded_file_path: string | null
+  t_download_error: string | null
+  t_downloaded_at: number | null
+  t_created_at: number | null
+  t_updated_at: number | null
+}
+
 type DbResolverCache = {
   id: string
   source_url: string
@@ -1129,6 +1204,38 @@ function mapPlaylistTrackRow(
   row: DbTrack & { playlist_entry_id: string; added_at: number }
 ): PlaylistTrackItem {
   return { ...mapTrack(row), playlistEntryId: row.playlist_entry_id, addedAt: row.added_at }
+}
+
+function mapQueueItemRow(row: DbQueueItemJoinRow): QueueItem {
+  const track = row.t_id
+    ? mapTrack({
+        id: row.t_id,
+        title: row.t_title ?? "",
+        artist: row.t_artist,
+        album: row.t_album,
+        duration_ms: row.t_duration_ms,
+        thumbnail_url: row.t_thumbnail_url,
+        canonical_url: row.t_canonical_url ?? "",
+        provider: row.t_provider ?? "unknown",
+        liked_at: row.t_liked_at,
+        download_status: row.t_download_status,
+        download_progress: row.t_download_progress,
+        downloaded_file_path: row.t_downloaded_file_path,
+        download_error: row.t_download_error,
+        downloaded_at: row.t_downloaded_at,
+        created_at: row.t_created_at ?? 0,
+        updated_at: row.t_updated_at ?? 0,
+      })
+    : null
+  return {
+    id: row.id,
+    trackId: row.track_id,
+    sourceUrl: row.source_url,
+    sortOrder: row.sort_order,
+    status: row.status as QueueItem["status"],
+    createdAt: row.created_at,
+    track,
+  }
 }
 
 function normalizeDownloadStatus(value: string | null | undefined): DownloadStatus {
