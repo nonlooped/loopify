@@ -104,7 +104,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       metadataMinScore: n("metadataMinScore", settings.metadataMinScore),
       importProgressThrottle: n("importProgressThrottle", settings.importProgressThrottle),
       discordPresenceEnabled: formData.get("discordPresenceEnabled") === "on",
-      communityLyricsFallbackEnabled: formData.get("communityLyricsFallbackEnabled") === "on",
     }
 
     setIsSaving(true)
@@ -254,27 +253,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <span className="type-meta mt-1 block text-muted">
                         Publish active playback to your Discord profile through Rich Presence while
                         Loopify is open.
-                      </span>
-                    </span>
-                  </label>
-                </section>
-
-                <section className="rounded-xl border border-border bg-white/3 p-4">
-                  <label className="type-body-sm flex cursor-pointer items-start gap-3 text-foreground">
-                    <span className="mt-0.5">
-                      <input
-                        type="checkbox"
-                        name="communityLyricsFallbackEnabled"
-                        defaultChecked={settings.communityLyricsFallbackEnabled}
-                        className="h-4 w-4 rounded border-subtle"
-                      />
-                    </span>
-                    <span>
-                      <span className="block">Use community lyrics fallback</span>
-                      <span className="type-meta mt-1 block text-muted">
-                        When Loopify cannot find lyrics through LRCLIB, try an unofficial hosted
-                        service as a last resort. This is disabled by default and may be slower,
-                        less accurate, or unavailable.
                       </span>
                     </span>
                   </label>

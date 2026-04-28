@@ -164,14 +164,14 @@ export type SyncedLyricLine = {
 }
 
 export type TrackLyrics = {
-  source: "lrclib" | "lyrica" | "cache"
+  source: "lrclib" | "cache"
   providerTrackId: string | null
   fetchedAt: number
   lines: SyncedLyricLine[]
 }
 
 export type StaticTrackLyrics = {
-  source: "lrclib" | "lyrica" | "cache"
+  source: "lrclib" | "cache"
   providerTrackId: string | null
   fetchedAt: number
   text: string
@@ -217,8 +217,6 @@ export type AppSettings = {
   importProgressThrottle: number
   /** Share active playback to Discord via Rich Presence. */
   discordPresenceEnabled: boolean
-  /** Allow an unofficial hosted lyrics service as a best-effort final fallback. */
-  communityLyricsFallbackEnabled: boolean
 }
 
 export type ResolverError = {

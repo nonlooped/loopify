@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import type { AppSettings, LyricsState, PlayerTrack } from "../../shared/types/music"
+import type { LyricsState, PlayerTrack } from "../../shared/types/music"
 import type { LyricsCacheInput, LyricsCacheRepository } from "../db/repositories"
 import { createLyricsCacheKey, LyricsService, parseLrc } from "./lyrics-service.ts"
 
@@ -12,26 +12,6 @@ const sampleTrack: PlayerTrack = {
   thumbnailUrl: null,
   canonicalUrl: "https://example.com/track",
   provider: "youtube",
-}
-
-function makeSettings(overrides?: Partial<AppSettings>): AppSettings {
-  return {
-    mpvPath: "mpv",
-    ytdlpPath: "yt-dlp",
-    playbackVolume: 75,
-    resolverTimeoutMs: 30_000,
-    cacheTtlHours: 6,
-    streamCacheTtlMinutes: 90,
-    importMaxTracks: 100,
-    importMatchConcurrency: 4,
-    spotifyMatchScoreThreshold: 0.42,
-    metadataEnrichmentEnabled: true,
-    metadataMinScore: 0.35,
-    importProgressThrottle: 3,
-    discordPresenceEnabled: true,
-    communityLyricsFallbackEnabled: false,
-    ...overrides,
-  }
 }
 
 test("parseLrc parses standard timestamps and derives line ends", () => {
@@ -75,7 +55,7 @@ test("LyricsService returns cached lyrics without fetching", async () => {
     throw new Error("fetch should not run")
   }
   try {
-    const service = new LyricsService(cache, () => makeSettings())
+    const service = new LyricsService(cache)
     assert.equal(await service.getForTrack(sampleTrack), cached)
   } finally {
     globalThis.fetch = originalFetch
@@ -96,7 +76,7 @@ test("LyricsService falls back to static lyrics when sync data is missing", asyn
       { status: 200 }
     )
   try {
-    const service = new LyricsService(cache, () => makeSettings())
+    const service = new LyricsService(cache)
     const result = await service.getForTrack(sampleTrack)
     assert.equal(result.status, "static")
     assert.equal(result.reason, null)
@@ -139,7 +119,7 @@ test("LyricsService searches for plain lyrics when exact lookup returns 404", as
     throw new Error(`Unexpected request: ${url}`)
   }
   try {
-    const service = new LyricsService(cache, () => makeSettings())
+    const service = new LyricsService(cache)
     const result = await service.getForTrack(sampleTrack)
     assert.equal(result.status, "static")
     assert.equal(result.reason, null)
@@ -152,74 +132,15 @@ test("LyricsService searches for plain lyrics when exact lookup returns 404", as
   }
 })
 
-test("LyricsService can use hosted community fallback when enabled", async () => {
-  const cache = createFakeCache(null)
-  const originalFetch = globalThis.fetch
-  const requests: string[] = []
-  globalThis.fetch = async (input) => {
-    const url =
-      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
-    requests.push(url)
-
-    if (url.startsWith("https://lrclib.net/api/get")) {
-      return new Response(null, { status: 404 })
-    }
-
-    if (url.startsWith("https://lrclib.net/api/search")) {
-      return new Response(JSON.stringify([]), { status: 200 })
-    }
-
-    if (url.startsWith("https://test-0k.onrender.com/lyrics/")) {
-      return new Response(
-        JSON.stringify({
-          status: "success",
-          data: {
-            instrumental: false,
-            hasTimestamps: false,
-            lyrics: "Community fallback lyrics",
-          },
-        }),
-        { status: 200 }
-      )
-    }
-
-    throw new Error(`Unexpected request: ${url}`)
-  }
-  try {
-    const service = new LyricsService(cache, () =>
-      makeSettings({ communityLyricsFallbackEnabled: true })
-    )
-    const result = await service.getForTrack(sampleTrack)
-    assert.equal(result.status, "static")
-    assert.equal(result.reason, null)
-    assert.equal(result.lyrics.source, "lyrica")
-    assert.equal(result.lyrics.text, "Community fallback lyrics")
-    assert.equal(requests.length, 3)
-    assert.match(requests[2], /test-0k\.onrender\.com\/lyrics\//)
-  } finally {
-    globalThis.fetch = originalFetch
-  }
-})
-
-test("createLyricsCacheKey changes when lyrics mode changes", () => {
-  assert.notEqual(
-    createLyricsCacheKey(sampleTrack, "builtin-only"),
-    createLyricsCacheKey(sampleTrack, "community-fallback")
-  )
-})
-
 test("createLyricsCacheKey normalizes stable track identity", () => {
   assert.equal(
-    createLyricsCacheKey(sampleTrack, "builtin-only"),
-    createLyricsCacheKey(
-      {
-        ...sampleTrack,
-        title: "  I   WANT TO LIVE ",
-        artist: "borislav slavov",
-        album: "baldur's gate 3",
-      },
-      "builtin-only"
-    )
+    createLyricsCacheKey(sampleTrack),
+    createLyricsCacheKey({
+      ...sampleTrack,
+      title: "  I   WANT TO LIVE ",
+      artist: "borislav slavov",
+      album: "baldur's gate 3",
+    })
   )
 })
 

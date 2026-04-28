@@ -440,7 +440,6 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
         metadataMinScore: z.number().min(0).max(1).optional(),
         importProgressThrottle: z.number().int().min(1).max(100).optional(),
         discordPresenceEnabled: z.boolean().optional(),
-        communityLyricsFallbackEnabled: z.boolean().optional(),
       })
       .parse(patch)
     const updated = deps.settings.update(parsed)

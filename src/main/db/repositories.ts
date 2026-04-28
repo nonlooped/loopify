@@ -32,7 +32,6 @@ const defaultSettings: AppSettings = {
   metadataMinScore: 0.35,
   importProgressThrottle: 3,
   discordPresenceEnabled: true,
-  communityLyricsFallbackEnabled: false,
 }
 
 const NUMERIC_SETTINGS = new Set<keyof AppSettings>([
@@ -50,7 +49,6 @@ const NUMERIC_SETTINGS = new Set<keyof AppSettings>([
 const BOOLEAN_SETTINGS = new Set<keyof AppSettings>([
   "metadataEnrichmentEnabled",
   "discordPresenceEnabled",
-  "communityLyricsFallbackEnabled",
 ])
 
 function id(prefix: string): string {

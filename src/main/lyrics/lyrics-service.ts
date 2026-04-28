@@ -1,10 +1,5 @@
 import { createHash } from "node:crypto"
-import type {
-  AppSettings,
-  LyricsState,
-  PlayerTrack,
-  SyncedLyricLine,
-} from "../../shared/types/music"
+import type { LyricsState, PlayerTrack, SyncedLyricLine } from "../../shared/types/music"
 import type { LyricsCacheRepository } from "../db/repositories"
 
 type LrclibResponse = {
@@ -19,45 +14,23 @@ type LrclibResponse = {
 
 const LRCLIB_ENDPOINT = "https://lrclib.net/api/get"
 const LRCLIB_SEARCH_ENDPOINT = "https://lrclib.net/api/search"
-const LYRICA_FALLBACK_ENDPOINT = "https://test-0k.onrender.com/lyrics/"
-
-type LyricaResponse = {
-  status?: string
-  data?: {
-    hasTimestamps?: boolean
-    instrumental?: boolean
-    lyrics?: string | null
-  }
-}
 
 export class LyricsService {
   private readonly cache: LyricsCacheRepository
-  private readonly getSettings: () => AppSettings
 
-  constructor(cache: LyricsCacheRepository, getSettings: () => AppSettings) {
+  constructor(cache: LyricsCacheRepository) {
     this.cache = cache
-    this.getSettings = getSettings
   }
 
   async getForTrack(track: PlayerTrack): Promise<LyricsState> {
-    const settings = this.getSettings()
-    const cacheKey = createLyricsCacheKey(
-      track,
-      settings.communityLyricsFallbackEnabled ? "community-fallback" : "builtin-only"
-    )
+    const cacheKey = createLyricsCacheKey(track)
     const cached = this.cache.get(cacheKey)
     if (cached) {
       return cached
     }
 
     const fetchedAt = Date.now()
-    let state = await this.fetchSyncedLyrics(track, fetchedAt)
-    if (
-      settings.communityLyricsFallbackEnabled &&
-      (state.status === "not-found" || state.status === "error")
-    ) {
-      state = await this.fetchCommunityFallbackLyrics(track, fetchedAt, state)
-    }
+    const state = await this.fetchSyncedLyrics(track, fetchedAt)
     return this.cache.set({
       id: cacheKey,
       trackTitle: track.title,
@@ -115,53 +88,6 @@ export class LyricsService {
         lyrics: null,
         reason: error instanceof Error ? error.message : "Lyrics lookup failed.",
       }
-    }
-  }
-
-  private async fetchCommunityFallbackLyrics(
-    track: PlayerTrack,
-    fetchedAt: number,
-    currentState: LyricsState
-  ): Promise<LyricsState> {
-    try {
-      const url = new URL(LYRICA_FALLBACK_ENDPOINT)
-      url.searchParams.set("artist", track.artist ?? "")
-      url.searchParams.set("song", track.title)
-
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "Loopify/0.1.0",
-        },
-      })
-      if (!response.ok) {
-        return currentState
-      }
-
-      const body = (await response.json()) as LyricaResponse
-      const lyrics = body.data?.lyrics?.trim()
-      if (!lyrics) {
-        return currentState
-      }
-      if (body.data?.instrumental) {
-        return {
-          status: "instrumental",
-          lyrics: null,
-          reason: "This track is marked as instrumental.",
-        }
-      }
-
-      return {
-        status: "static",
-        reason: null,
-        lyrics: {
-          source: "lyrica",
-          providerTrackId: null,
-          fetchedAt,
-          text: lyrics,
-        },
-      }
-    } catch {
-      return currentState
     }
   }
 
@@ -238,13 +164,12 @@ export function parseLrc(input: string): SyncedLyricLine[] {
   }))
 }
 
-export function createLyricsCacheKey(track: PlayerTrack, mode = "builtin-only"): string {
+export function createLyricsCacheKey(track: PlayerTrack): string {
   const durationSeconds =
     track.durationMs == null ? "" : String(Math.round(track.durationMs / 1000))
   return createHash("sha256")
     .update(
       [
-        mode,
         track.provider,
         normalizeIdentity(track.canonicalUrl),
         normalizeIdentity(track.title),

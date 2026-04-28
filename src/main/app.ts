@@ -80,7 +80,7 @@ async function createWindow(): Promise<void> {
   queueRepository = queue
   const resolverCache = new ResolverCacheRepository(db)
   const resolver = new ResolverService(settings, resolverCache)
-  const lyrics = new LyricsService(new LyricsCacheRepository(db), () => settings.get())
+  const lyrics = new LyricsService(new LyricsCacheRepository(db))
   player = new PlayerService(settings)
   const updater = new UpdaterService()
   presence = new DiscordPresenceService({

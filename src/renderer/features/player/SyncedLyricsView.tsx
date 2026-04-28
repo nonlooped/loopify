@@ -201,23 +201,29 @@ function StaticLyricsView({ text }: { text: string | null }) {
     )
   }
 
+  const lines = text.split(/\r?\n/)
+
   return (
     <section
-      className="relative flex min-h-0 flex-1 w-full max-w-[42rem] self-center overflow-y-auto px-6 py-[14vh] text-left sm:px-8 sm:py-[16vh]"
+      className="relative flex min-h-0 flex-1 w-full max-w-[44rem] self-center overflow-y-auto px-2 py-[16vh] text-left sm:px-6 sm:py-[18vh]"
       aria-label="Lyrics"
     >
-      <div className="flex w-full flex-col gap-5">
-        <div className="space-y-1 px-1">
-          <p className="type-meta m-0 text-subtle">Plain lyrics</p>
-          <h3 className="m-0 text-[1.35rem] font-semibold tracking-[-0.03em] text-foreground sm:text-[1.55rem]">
-            Synced lyrics were not available
-          </h3>
-        </div>
-        <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.035] px-5 py-5 backdrop-blur-xl sm:px-6 sm:py-6">
-          <p className="m-0 whitespace-pre-wrap text-[1.02rem] leading-8 tracking-[-0.01em] text-muted sm:text-[1.08rem]">
-            {text}
-          </p>
-        </div>
+      <div className="flex flex-col gap-2">
+        {lines.map((line, index) => {
+          if (!line.trim()) {
+            // biome-ignore lint/suspicious/noArrayIndexKey: Static array mapping
+            return <div key={index} className="h-3 sm:h-4" aria-hidden />
+          }
+          const i = index
+          return (
+            <p
+              key={`static-line-${i}`}
+              className="m-0 rounded-xl px-4 py-2.5 text-left text-[1.55rem] font-semibold leading-tight tracking-[-0.025em] text-muted opacity-90 transition-colors duration-ui hover:text-foreground sm:text-[1.9rem]"
+            >
+              {line}
+            </p>
+          )
+        })}
       </div>
     </section>
   )
