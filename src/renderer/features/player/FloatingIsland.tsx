@@ -16,7 +16,7 @@ import {
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
-import type { PlayerState, RepeatMode, Track } from "src/shared/types/music"
+import type { Track } from "src/shared/types/music"
 import { IconButton } from "@/components/IconButton"
 import { Slider } from "@/components/Slider"
 import { useFocusTrap } from "@/hooks/useFocusTrap"
@@ -25,53 +25,34 @@ import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { modArrowHint, playPauseHint } from "@/lib/keyboard-shortcuts"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut, isMacLike } from "@/lib/shortcut"
+import { useAppStore } from "@/stores/app.store"
 import { SyncedLyricsView } from "./SyncedLyricsView"
 
-interface FloatingIslandProps {
-  playerState: PlayerState | null
-  currentTrack: Track | null
-  currentArtwork?: string
-  currentArtist: string
-  onPlayPause: () => void
-  onNext: () => void
-  onPrevious: () => void
-  onSeek: (s: number) => void
-  onVolumeChange: (v: number) => void
-  hasNext: boolean
-  hasPrevious: boolean
-  onToggleQueue: () => void
-  isQueueOpen: boolean
-  onShuffleQueue: () => void
-  canShuffleQueue: boolean
-  onCycleRepeat: () => void
-  repeatMode: RepeatMode
-  onToggleCurrentLike: () => void
-  onDownloadCurrent: () => void
-  onRemoveCurrentDownload: () => void
-}
+export function FloatingIsland() {
+  const playerState = useAppStore((s) => s.playerState)
+  const queue = useAppStore((s) => s.queue)
+  const isQueueOpen = useAppStore((s) => s.isQueueOpen)
+  const handlePlayPause = useAppStore((s) => s.handlePlayPause)
+  const handleNext = useAppStore((s) => s.handleNext)
+  const handlePrevious = useAppStore((s) => s.handlePrevious)
+  const handleSeek = useAppStore((s) => s.handleSeek)
+  const handleVolumeChange = useAppStore((s) => s.handleVolumeChange)
+  const handleShuffleQueue = useAppStore((s) => s.handleShuffleQueue)
+  const handleCycleRepeat = useAppStore((s) => s.handleCycleRepeat)
+  const handleToggleLikeTrack = useAppStore((s) => s.handleToggleLikeTrack)
+  const handleDownloadTrack = useAppStore((s) => s.handleDownloadTrack)
+  const handleRemoveTrackDownload = useAppStore((s) => s.handleRemoveTrackDownload)
+  const toggleQueue = useAppStore((s) => s.toggleQueue)
 
-export function FloatingIsland({
-  playerState,
-  currentTrack,
-  currentArtwork,
-  currentArtist,
-  onPlayPause,
-  onNext,
-  onPrevious,
-  onSeek,
-  onVolumeChange,
-  hasNext,
-  hasPrevious,
-  onToggleQueue,
-  isQueueOpen,
-  onShuffleQueue,
-  canShuffleQueue,
-  onCycleRepeat,
-  repeatMode,
-  onToggleCurrentLike,
-  onDownloadCurrent,
-  onRemoveCurrentDownload,
-}: FloatingIslandProps) {
+  const currentQueueItem = queue.find((q) => q.id === playerState?.queueItemId)
+  const currentTrack: Track | null = currentQueueItem?.track ?? null
+  const currentArtwork = currentQueueItem?.track?.thumbnailUrl ?? ""
+  const currentArtist = currentQueueItem?.track?.artist || "..."
+  const currentQueueIndex = queue.findIndex((q) => q.id === playerState?.queueItemId)
+  const hasNext = currentQueueIndex >= 0 && currentQueueIndex < queue.length - 1
+  const hasPrevious = currentQueueIndex > 0
+  const canShuffleQueue = queue.length >= 2
+  const repeatMode = playerState?.repeatMode ?? "off"
   const [isExpanded, setIsExpanded] = useState(false)
   const [expandedMode, setExpandedMode] = useState<"artwork" | "lyrics">("artwork")
   const { containerRef: expandedPanelRef, handleKeyDown: onExpandedKeyDown } =
@@ -100,8 +81,12 @@ export function FloatingIsland({
   const repeatLabel =
     repeatMode === "one" ? "Repeat one" : repeatMode === "all" ? "Repeat queue" : "Repeat off"
   const RepeatIcon = repeatMode === "one" ? Repeat1 : Repeat
-  const downloadAction =
-    downloadStatus === "downloaded" ? onRemoveCurrentDownload : onDownloadCurrent
+  const downloadAction = () => {
+    const t = currentTrack
+    if (!t) return
+    if (downloadStatus === "downloaded") void handleRemoveTrackDownload(t)
+    else void handleDownloadTrack(t)
+  }
 
   useEffect(() => {
     if (!hasTrack) {
@@ -170,7 +155,10 @@ export function FloatingIsland({
                   <div className="flex items-center gap-2">
                     <IconButton
                       size="md"
-                      onClick={onToggleCurrentLike}
+                      onClick={() => {
+                        const t = currentTrack
+                        if (t) void handleToggleLikeTrack(t)
+                      }}
                       title={isLiked ? "Unlike current song" : "Like current song"}
                       active={isLiked}
                       disabled={!currentTrack}
@@ -221,7 +209,7 @@ export function FloatingIsland({
                     <SyncedLyricsView
                       track={playerState?.track ?? null}
                       positionSeconds={position}
-                      onSeek={onSeek}
+                      onSeek={handleSeek}
                     />
                   ) : (
                     <>
@@ -271,7 +259,7 @@ export function FloatingIsland({
                       className="min-w-0 flex-1"
                       max={duration || 100}
                       value={position}
-                      onChange={(e) => onSeek(Number(e.target.value))}
+                      onChange={(e) => handleSeek(Number(e.target.value))}
                       disabled={!duration}
                       title="Seek (arrows: ±5s, Shift+arrows: ±30s, Home/End, or drag)"
                     />
@@ -282,7 +270,7 @@ export function FloatingIsland({
 
                   <div className="mb-3 mt-4 flex items-center justify-center gap-3 sm:mb-5 sm:mt-6 sm:gap-4">
                     <IconButton
-                      onClick={onPrevious}
+                      onClick={handlePrevious}
                       disabled={!hasPrevious}
                       title={`Previous track (${modArrowHint("left")})`}
                       className="h-11 w-11 rounded-full bg-white/4 sm:h-12 sm:w-12"
@@ -291,7 +279,7 @@ export function FloatingIsland({
                     </IconButton>
                     <button
                       type="button"
-                      onClick={onPlayPause}
+                      onClick={handlePlayPause}
                       title={playPauseHint()}
                       className="cursor-pointer flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-foreground text-canvas transition-transform duration-press ease-out-quart hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100 sm:h-16 sm:w-16 lg:h-18 lg:w-18"
                     >
@@ -302,7 +290,7 @@ export function FloatingIsland({
                       )}
                     </button>
                     <IconButton
-                      onClick={onNext}
+                      onClick={handleNext}
                       disabled={!hasNext}
                       title={`Next track (${modArrowHint("right")})`}
                       className="h-11 w-11 rounded-full bg-white/4 sm:h-12 sm:w-12"
@@ -320,7 +308,7 @@ export function FloatingIsland({
                         className="min-w-0 flex-1"
                         max={100}
                         value={volume}
-                        onChange={(e) => onVolumeChange(Number(e.target.value))}
+                        onChange={(e) => handleVolumeChange(Number(e.target.value))}
                         title={isMacLike() ? "Volume (⌘↑ / ⌘↓)" : "Volume (Ctrl+Up / Ctrl+Down)"}
                       />
                     </div>
@@ -328,7 +316,7 @@ export function FloatingIsland({
                       <IconButton
                         size="md"
                         title={repeatLabel}
-                        onClick={onCycleRepeat}
+                        onClick={handleCycleRepeat}
                         active={repeatMode !== "off"}
                       >
                         <RepeatIcon className="h-5 w-5" />
@@ -336,7 +324,7 @@ export function FloatingIsland({
                       <IconButton
                         size="md"
                         title={isMacLike() ? "Shuffle queue (⌘⇧H)" : "Shuffle queue (Ctrl+Shift+H)"}
-                        onClick={onShuffleQueue}
+                        onClick={handleShuffleQueue}
                         disabled={!canShuffleQueue}
                       >
                         <Shuffle className="h-5 w-5" />
@@ -344,7 +332,7 @@ export function FloatingIsland({
                       <IconButton
                         size="md"
                         title={`Up Next (${formatModShortcut("L")})`}
-                        onClick={onToggleQueue}
+                        onClick={() => toggleQueue()}
                         active={isQueueOpen}
                       >
                         <ListMusic className="h-5 w-5" />
@@ -421,7 +409,7 @@ export function FloatingIsland({
             <div className="pointer-events-auto flex items-center justify-center gap-3 sm:gap-4">
               <IconButton
                 size="md"
-                onClick={onPrevious}
+                onClick={handlePrevious}
                 disabled={!hasPrevious}
                 title={`Previous track (${modArrowHint("left")})`}
               >
@@ -429,7 +417,7 @@ export function FloatingIsland({
               </IconButton>
               <button
                 type="button"
-                onClick={onPlayPause}
+                onClick={handlePlayPause}
                 title={playPauseHint()}
                 className="cursor-pointer flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-foreground text-canvas transition-transform duration-press ease-out-quart hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
               >
@@ -441,7 +429,7 @@ export function FloatingIsland({
               </button>
               <IconButton
                 size="md"
-                onClick={onNext}
+                onClick={handleNext}
                 disabled={!hasNext}
                 title={`Next track (${modArrowHint("right")})`}
               >
@@ -456,7 +444,7 @@ export function FloatingIsland({
                 className="pointer-events-auto min-w-0 flex-1"
                 max={duration || 100}
                 value={position}
-                onChange={(e) => onSeek(Number(e.target.value))}
+                onChange={(e) => handleSeek(Number(e.target.value))}
                 disabled={!duration}
                 title="Seek (arrows: ±5s, Shift+arrows: ±30s, Home/End, or drag)"
               />
@@ -473,14 +461,17 @@ export function FloatingIsland({
                 className="pointer-events-auto min-w-0 flex-1"
                 max={100}
                 value={volume}
-                onChange={(e) => onVolumeChange(Number(e.target.value))}
+                onChange={(e) => handleVolumeChange(Number(e.target.value))}
                 title={isMacLike() ? "Volume (⌘↑ / ⌘↓)" : "Volume (Ctrl+Up / Ctrl+Down)"}
               />
             </div>
             <div className="pointer-events-auto flex shrink-0 items-center gap-1 self-end md:self-auto sm:gap-2">
               <IconButton
                 size="md"
-                onClick={onToggleCurrentLike}
+                onClick={() => {
+                  const t = currentTrack
+                  if (t) void handleToggleLikeTrack(t)
+                }}
                 title={isLiked ? "Unlike current song" : "Like current song"}
                 active={isLiked}
                 disabled={!currentTrack}
@@ -503,7 +494,7 @@ export function FloatingIsland({
               <IconButton
                 size="md"
                 title={`Up Next (${formatModShortcut("L")})`}
-                onClick={onToggleQueue}
+                onClick={() => toggleQueue()}
                 active={isQueueOpen}
               >
                 <ListMusic className="h-5 w-5" />

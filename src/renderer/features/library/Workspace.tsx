@@ -31,6 +31,7 @@ import { cn } from "@/lib/cn"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { downloadTitle, formatPlaylistMeta, formatTrackDuration } from "@/lib/music-format"
 import { formatModShortcut, searchShortcutProse } from "@/lib/shortcut"
+import { useAppStore } from "@/stores/app.store"
 import { PlaylistArtwork } from "./PlaylistArtwork"
 
 const PLAYLIST_TRACK_DRAG_MIME = "application/x-loopify-pl-entry"
@@ -50,49 +51,28 @@ function playlistCountTransitionName(playlistId: string) {
   return `playlist-count-${playlistId}`
 }
 
-interface WorkspaceProps {
-  activePlaylist: Playlist | null
-  playlists: Playlist[]
-  onPlayTrack: (t: Track) => void
-  onSelectPlaylist: (id: string | null) => void
-  onPlayPlaylist?: (playlist: Playlist) => void
-  onEnqueuePlaylist?: (playlist: Playlist) => void
-  onRequestRenamePlaylist?: (playlist: Playlist) => void
-  onRequestDeletePlaylist?: (playlist: Playlist) => void
-  onRemoveTrackFromPlaylist?: (playlistId: string, entryId: string) => void
-  onMovePlaylistTrack?: (playlistId: string, entryId: string, newIndex: number) => void
-  onEnqueuePlaylistTrack?: (track: Track) => void
-  onToggleLikeTrack?: (track: Track) => void
-  onDownloadTrack?: (track: Track) => void
-  onRemoveTrackDownload?: (track: Track) => void
-  onDownloadPlaylist?: (playlist: Playlist) => void
-  onAddTrackToPlaylist?: (playlistId: string, track: Track) => void
-  onOpenSearch?: () => void
-  onOpenImport?: () => void
-  onCreatePlaylist?: () => void
-}
-
-export function Workspace({
-  activePlaylist,
-  playlists,
-  onPlayTrack,
-  onSelectPlaylist,
-  onPlayPlaylist,
-  onEnqueuePlaylist,
-  onRequestRenamePlaylist,
-  onRequestDeletePlaylist,
-  onRemoveTrackFromPlaylist,
-  onMovePlaylistTrack,
-  onEnqueuePlaylistTrack,
-  onToggleLikeTrack,
-  onDownloadTrack,
-  onRemoveTrackDownload,
-  onDownloadPlaylist,
-  onAddTrackToPlaylist,
-  onOpenSearch,
-  onOpenImport,
-  onCreatePlaylist,
-}: WorkspaceProps) {
+export function Workspace() {
+  const playlists = useAppStore((s) => s.playlists)
+  const activePlaylistId = useAppStore((s) => s.activePlaylistId)
+  const selectPlaylist = useAppStore((s) => s.selectPlaylistWithTransition)
+  const handlePlayTrack = useAppStore((s) => s.handlePlayTrack)
+  const handlePlayPlaylist = useAppStore((s) => s.handlePlayPlaylist)
+  const handleEnqueuePlaylist = useAppStore((s) => s.handleEnqueuePlaylist)
+  const openRenamePlaylist = useAppStore((s) => s.openRenamePlaylist)
+  const openDeletePlaylist = useAppStore((s) => s.openDeletePlaylist)
+  const handleRemoveFromPlaylist = useAppStore((s) => s.handleRemoveFromPlaylist)
+  const handleMovePlaylistTrack = useAppStore((s) => s.handleMovePlaylistTrack)
+  const handleEnqueuePlaylistTrack = useAppStore((s) => s.handleEnqueuePlaylistTrack)
+  const handleToggleLikeTrack = useAppStore((s) => s.handleToggleLikeTrack)
+  const handleDownloadTrack = useAppStore((s) => s.handleDownloadTrack)
+  const handleRemoveTrackDownload = useAppStore((s) => s.handleRemoveTrackDownload)
+  const handleDownloadPlaylist = useAppStore((s) => s.handleDownloadPlaylist)
+  const handleAddTrackToPlaylist = useAppStore((s) => s.handleAddTrackToPlaylist)
+  const handleCreatePlaylist = useAppStore((s) => s.handleCreatePlaylist)
+  const activePlaylist = useMemo(
+    () => playlists.find((p) => p.id === activePlaylistId) || null,
+    [playlists, activePlaylistId]
+  )
   const [sortField, setSortField] = useState<PlaylistSortField>("position")
   const [sortDirection, setSortDirection] = useState<PlaylistSortDirection>("asc")
   const [trackDropPlaylistId, setTrackDropPlaylistId] = useState<string | null>(null)
@@ -100,13 +80,13 @@ export function Workspace({
 
   const handlePlaylistCardDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>, playlistId: string) => {
-      if (!onAddTrackToPlaylist) return
+      if (!handleAddTrackToPlaylist) return
       if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
       e.preventDefault()
       e.dataTransfer.dropEffect = "copy"
       setTrackDropPlaylistId(playlistId)
     },
-    [onAddTrackToPlaylist]
+    [handleAddTrackToPlaylist]
   )
 
   const handlePlaylistCardDragLeave = useCallback(
@@ -119,30 +99,30 @@ export function Workspace({
 
   const handlePlaylistCardDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>, playlistId: string) => {
-      if (!onAddTrackToPlaylist) return
+      if (!handleAddTrackToPlaylist) return
       const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
       if (!raw) return
       e.preventDefault()
       setTrackDropPlaylistId(null)
       try {
         const track = JSON.parse(raw) as Track
-        onAddTrackToPlaylist(playlistId, track)
+        handleAddTrackToPlaylist(playlistId, track)
       } catch (err) {
         console.error("Failed to parse dropped track payload", err)
       }
     },
-    [onAddTrackToPlaylist]
+    [handleAddTrackToPlaylist]
   )
 
   const handleOpenPlaylistDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!onAddTrackToPlaylist || !activePlaylist) return
+      if (!handleAddTrackToPlaylist || !activePlaylist) return
       if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
       e.preventDefault()
       e.dataTransfer.dropEffect = "copy"
       setIsTrackDropOverOpen(true)
     },
-    [onAddTrackToPlaylist, activePlaylist]
+    [handleAddTrackToPlaylist, activePlaylist]
   )
 
   const handleOpenPlaylistDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -152,32 +132,32 @@ export function Workspace({
 
   const handleOpenPlaylistDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      if (!onAddTrackToPlaylist || !activePlaylist) return
+      if (!handleAddTrackToPlaylist || !activePlaylist) return
       const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
       if (!raw) return
       e.preventDefault()
       setIsTrackDropOverOpen(false)
       try {
         const track = JSON.parse(raw) as Track
-        onAddTrackToPlaylist(activePlaylist.id, track)
+        handleAddTrackToPlaylist(activePlaylist.id, track)
       } catch (err) {
         console.error("Failed to parse dropped track payload", err)
       }
     },
-    [onAddTrackToPlaylist, activePlaylist]
+    [handleAddTrackToPlaylist, activePlaylist]
   )
 
   const openPlaylist = useCallback(
     (id: string) => {
-      onSelectPlaylist(id)
+      selectPlaylist(id)
     },
-    [onSelectPlaylist]
+    [selectPlaylist]
   )
 
   const backToCollection = useCallback(() => {
     if (!activePlaylist) return
-    onSelectPlaylist(null)
-  }, [activePlaylist, onSelectPlaylist])
+    selectPlaylist(null)
+  }, [activePlaylist, selectPlaylist])
 
   const hasTracks = activePlaylist?.tracks && activePlaylist.tracks.length > 0
   const activeTracks = useMemo(
@@ -198,19 +178,17 @@ export function Workspace({
         >
           <div className="mb-6 flex flex-col gap-4 sm:mb-8">
             <h1 className="type-heading m-0 text-foreground sm:text-[1.75rem]">Collection</h1>
-            {onOpenSearch && (
-              <button
-                type="button"
-                onClick={onOpenSearch}
-                className="flex w-full max-w-md cursor-pointer items-center gap-3 rounded-xl border border-border bg-raised px-4 py-3 text-left transition-colors duration-ui ease-out-quart hover:border-white/20 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <Search className="h-4 w-4 shrink-0 text-subtle" />
-                <span className="type-body-sm text-subtle">Search tracks or paste a URL...</span>
-                <span className="type-meta ml-auto shrink-0 text-subtle">
-                  {formatModShortcut("K")}
-                </span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => useAppStore.getState().toggleSearch(true)}
+              className="flex w-full max-w-md cursor-pointer items-center gap-3 rounded-xl border border-border bg-raised px-4 py-3 text-left transition-colors duration-ui ease-out-quart hover:border-white/20 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <Search className="h-4 w-4 shrink-0 text-subtle" />
+              <span className="type-body-sm text-subtle">Search tracks or paste a URL...</span>
+              <span className="type-meta ml-auto shrink-0 text-subtle">
+                {formatModShortcut("K")}
+              </span>
+            </button>
           </div>
           {playlists.length === 0 ? (
             <EmptyState
@@ -221,41 +199,35 @@ export function Workspace({
               description="Playlists live on this computer, so imports, quick finds, and saved sets stay close at hand. Search to play immediately, import an existing list, or create an empty playlist for a slower build."
               actions={
                 <>
-                  {onOpenSearch && (
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="gap-2 sm:min-w-44"
-                      onClick={onOpenSearch}
-                    >
-                      <Search className="h-4 w-4" aria-hidden />
-                      Search ({formatModShortcut("K")})
-                    </Button>
-                  )}
-                  {onOpenImport && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      className="gap-2 border-border sm:min-w-44"
-                      onClick={onOpenImport}
-                    >
-                      <Download className="h-4 w-4" aria-hidden />
-                      Import playlist
-                    </Button>
-                  )}
-                  {onCreatePlaylist && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="lg"
-                      className="gap-2 sm:min-w-44"
-                      onClick={onCreatePlaylist}
-                    >
-                      <Plus className="h-4 w-4" aria-hidden />
-                      New playlist
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="gap-2 sm:min-w-44"
+                    onClick={() => useAppStore.getState().toggleSearch(true)}
+                  >
+                    <Search className="h-4 w-4" aria-hidden />
+                    Search ({formatModShortcut("K")})
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="gap-2 border-border sm:min-w-44"
+                    onClick={() => useAppStore.getState().toggleImport(true)}
+                  >
+                    <Download className="h-4 w-4" aria-hidden />
+                    Import playlist
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="lg"
+                    className="gap-2 sm:min-w-44"
+                    onClick={handleCreatePlaylist}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    New playlist
+                  </Button>
                 </>
               }
             />
@@ -286,30 +258,30 @@ export function Workspace({
                       title="Play playlist"
                       className="h-10 w-10 rounded-full bg-accent text-on-accent hover:bg-accent-bright"
                       onClick={() => {
-                        onPlayPlaylist?.(p)
+                        handlePlayPlaylist?.(p)
                       }}
                     >
                       <Play className="h-5 w-5 fill-current ml-0.5" />
                     </IconButton>
-                    {onRequestRenamePlaylist && !isSystemPlaylistId(p.id) && (
+                    {openRenamePlaylist && !isSystemPlaylistId(p.id) && (
                       <IconButton
                         size="sm"
                         title="Rename playlist"
                         className="h-10 w-10 rounded-full bg-canvas/90 text-foreground shadow-md backdrop-blur-sm"
                         onClick={() => {
-                          onRequestRenamePlaylist(p)
+                          openRenamePlaylist(p)
                         }}
                       >
                         <Pencil className="h-4 w-4" />
                       </IconButton>
                     )}
-                    {onRequestDeletePlaylist && !isSystemPlaylistId(p.id) && (
+                    {openDeletePlaylist && !isSystemPlaylistId(p.id) && (
                       <IconButton
                         size="sm"
                         title="Delete playlist"
                         className="h-10 w-10 rounded-full bg-canvas/90 text-foreground shadow-md backdrop-blur-sm hover:text-danger"
                         onClick={() => {
-                          onRequestDeletePlaylist(p)
+                          openDeletePlaylist(p)
                         }}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -357,17 +329,15 @@ export function Workspace({
             >
               ← Back to Collection
             </button>
-            {onOpenSearch && (
-              <button
-                type="button"
-                onClick={onOpenSearch}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-raised px-3 py-2 text-left transition-colors duration-ui ease-out-quart hover:border-white/20 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <Search className="h-4 w-4 shrink-0 text-subtle" />
-                <span className="type-meta hidden text-subtle sm:inline">Search</span>
-                <span className="type-meta text-subtle">{formatModShortcut("K")}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => useAppStore.getState().toggleSearch(true)}
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-raised px-3 py-2 text-left transition-colors duration-ui ease-out-quart hover:border-white/20 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <Search className="h-4 w-4 shrink-0 text-subtle" />
+              <span className="type-meta hidden text-subtle sm:inline">Search</span>
+              <span className="type-meta text-subtle">{formatModShortcut("K")}</span>
+            </button>
           </div>
           <div className="mb-6 flex flex-col gap-6 sm:mb-8 sm:flex-row sm:items-end sm:gap-8">
             <div className="h-40 w-40 shrink-0 overflow-hidden rounded-2xl bg-surface shadow-xl sm:h-48 sm:w-48 lg:h-56 lg:w-56">
@@ -395,10 +365,10 @@ export function Workspace({
                 )}
               </p>
               <div className="flex flex-wrap items-center gap-3">
-                {onPlayPlaylist && (
+                {handlePlayPlaylist && (
                   <Button
                     size="lg"
-                    onClick={() => onPlayPlaylist(activePlaylist)}
+                    onClick={() => handlePlayPlaylist(activePlaylist)}
                     disabled={!hasTracks}
                     className="gap-2"
                   >
@@ -406,11 +376,11 @@ export function Workspace({
                     Play All
                   </Button>
                 )}
-                {onEnqueuePlaylist && (
+                {handleEnqueuePlaylist && (
                   <Button
                     variant="ghost"
                     size="lg"
-                    onClick={() => onEnqueuePlaylist(activePlaylist)}
+                    onClick={() => handleEnqueuePlaylist(activePlaylist)}
                     disabled={!hasTracks}
                     className="gap-2"
                   >
@@ -418,29 +388,29 @@ export function Workspace({
                     Add to Queue
                   </Button>
                 )}
-                {onDownloadPlaylist && (
+                {handleDownloadPlaylist && (
                   <PlaylistDownloadButton
                     playlist={activePlaylist}
-                    onDownloadPlaylist={onDownloadPlaylist}
+                    handleDownloadPlaylist={handleDownloadPlaylist}
                     disabled={!hasTracks}
                   />
                 )}
-                {onRequestRenamePlaylist && !isSystemPlaylistId(activePlaylist.id) && (
+                {openRenamePlaylist && !isSystemPlaylistId(activePlaylist.id) && (
                   <Button
                     variant="ghost"
                     size="lg"
-                    onClick={() => onRequestRenamePlaylist(activePlaylist)}
+                    onClick={() => openRenamePlaylist(activePlaylist)}
                     className="gap-2"
                   >
                     <Pencil className="h-4 w-4" />
                     Rename
                   </Button>
                 )}
-                {onRequestDeletePlaylist && !isSystemPlaylistId(activePlaylist.id) && (
+                {openDeletePlaylist && !isSystemPlaylistId(activePlaylist.id) && (
                   <Button
                     variant="ghost"
                     size="lg"
-                    onClick={() => onRequestDeletePlaylist(activePlaylist)}
+                    onClick={() => openDeletePlaylist(activePlaylist)}
                     className="gap-2 text-danger hover:opacity-90"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -474,15 +444,15 @@ export function Workspace({
                   <PlaylistTracksList
                     playlistId={activePlaylist.id}
                     tracks={activeTracks}
-                    onPlayTrack={onPlayTrack}
-                    onRemoveTrackFromPlaylist={
-                      isSystemPlaylistId(activePlaylist.id) ? undefined : onRemoveTrackFromPlaylist
+                    handlePlayTrack={handlePlayTrack}
+                    handleRemoveFromPlaylist={
+                      isSystemPlaylistId(activePlaylist.id) ? undefined : handleRemoveFromPlaylist
                     }
-                    onMovePlaylistTrack={canManualReorder ? onMovePlaylistTrack : undefined}
-                    onEnqueuePlaylistTrack={onEnqueuePlaylistTrack}
-                    onToggleLikeTrack={onToggleLikeTrack}
-                    onDownloadTrack={onDownloadTrack}
-                    onRemoveTrackDownload={onRemoveTrackDownload}
+                    handleMovePlaylistTrack={canManualReorder ? handleMovePlaylistTrack : undefined}
+                    handleEnqueuePlaylistTrack={handleEnqueuePlaylistTrack}
+                    handleToggleLikeTrack={handleToggleLikeTrack}
+                    handleDownloadTrack={handleDownloadTrack}
+                    handleRemoveTrackDownload={handleRemoveTrackDownload}
                   />
                 </div>
               </div>
@@ -518,24 +488,27 @@ export function Workspace({
                     description={emptyConfig.description}
                     actions={
                       <>
-                        {onOpenImport && !isSystem && (
-                          <Button type="button" size="lg" className="gap-2" onClick={onOpenImport}>
+                        {!isSystem && (
+                          <Button
+                            type="button"
+                            size="lg"
+                            className="gap-2"
+                            onClick={() => useAppStore.getState().toggleImport(true)}
+                          >
                             <Download className="h-4 w-4" aria-hidden />
                             Import
                           </Button>
                         )}
-                        {onOpenSearch && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="lg"
-                            className="gap-2 border-border"
-                            onClick={onOpenSearch}
-                          >
-                            <Search className="h-4 w-4" aria-hidden />
-                            Search
-                          </Button>
-                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="lg"
+                          className="gap-2 border-border"
+                          onClick={() => useAppStore.getState().toggleSearch(true)}
+                        >
+                          <Search className="h-4 w-4" aria-hidden />
+                          Search
+                        </Button>
                       </>
                     }
                   />
@@ -552,11 +525,11 @@ export function Workspace({
 function PlaylistDownloadButton({
   playlist,
   disabled,
-  onDownloadPlaylist,
+  handleDownloadPlaylist,
 }: {
   playlist: Playlist
   disabled: boolean
-  onDownloadPlaylist: (playlist: Playlist) => void
+  handleDownloadPlaylist: (playlist: Playlist) => void
 }) {
   const tracks = playlist.tracks ?? []
   const downloadable = tracks.filter((track) => track.downloadStatus !== "downloaded")
@@ -580,7 +553,7 @@ function PlaylistDownloadButton({
     <Button
       variant="ghost"
       size="lg"
-      onClick={() => onDownloadPlaylist(playlist)}
+      onClick={() => handleDownloadPlaylist(playlist)}
       disabled={disabled || downloaded || downloading.length > 0}
       className="gap-2"
     >
@@ -644,23 +617,23 @@ const TRACK_ROW_ESTIMATE = 56
 function PlaylistTracksList({
   playlistId,
   tracks,
-  onPlayTrack,
-  onRemoveTrackFromPlaylist,
-  onMovePlaylistTrack,
-  onEnqueuePlaylistTrack,
-  onToggleLikeTrack,
-  onDownloadTrack,
-  onRemoveTrackDownload,
+  handlePlayTrack,
+  handleRemoveFromPlaylist,
+  handleMovePlaylistTrack,
+  handleEnqueuePlaylistTrack,
+  handleToggleLikeTrack,
+  handleDownloadTrack,
+  handleRemoveTrackDownload,
 }: {
   playlistId: string
   tracks: PlaylistTrackItem[]
-  onPlayTrack: (t: Track) => void
-  onRemoveTrackFromPlaylist?: (playlistId: string, entryId: string) => void
-  onMovePlaylistTrack?: (playlistId: string, entryId: string, newIndex: number) => void
-  onEnqueuePlaylistTrack?: (track: Track) => void
-  onToggleLikeTrack?: (track: Track) => void
-  onDownloadTrack?: (track: Track) => void
-  onRemoveTrackDownload?: (track: Track) => void
+  handlePlayTrack: (t: Track) => void
+  handleRemoveFromPlaylist?: (playlistId: string, entryId: string) => void
+  handleMovePlaylistTrack?: (playlistId: string, entryId: string, newIndex: number) => void
+  handleEnqueuePlaylistTrack?: (track: Track) => void
+  handleToggleLikeTrack?: (track: Track) => void
+  handleDownloadTrack?: (track: Track) => void
+  handleRemoveTrackDownload?: (track: Track) => void
 }) {
   const [draggingEntryId, setDraggingEntryId] = useState<string | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -676,7 +649,7 @@ function PlaylistTracksList({
     enabled: shouldVirtualize,
   })
 
-  const canReorder = Boolean(onMovePlaylistTrack) && tracks.length > 1 && !shouldVirtualize
+  const canReorder = Boolean(handleMovePlaylistTrack) && tracks.length > 1 && !shouldVirtualize
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, entryId: string) => {
@@ -718,31 +691,31 @@ function PlaylistTracksList({
       const entryId = e.dataTransfer.getData(PLAYLIST_TRACK_DRAG_MIME)
       draggingEntryRef.current = null
       setDraggingEntryId(null)
-      if (!entryId || !onMovePlaylistTrack) return
+      if (!entryId || !handleMovePlaylistTrack) return
       const fromIndex = tracks.findIndex((t) => t.playlistEntryId === entryId)
       if (fromIndex < 0 || fromIndex === dropIndex) return
-      void onMovePlaylistTrack(playlistId, entryId, dropIndex)
+      void handleMovePlaylistTrack(playlistId, entryId, dropIndex)
     },
-    [onMovePlaylistTrack, playlistId, tracks]
+    [handleMovePlaylistTrack, playlistId, tracks]
   )
 
   const removeEntry = useCallback(
-    (entryId: string) => onRemoveTrackFromPlaylist?.(playlistId, entryId),
-    [onRemoveTrackFromPlaylist, playlistId]
+    (entryId: string) => handleRemoveFromPlaylist?.(playlistId, entryId),
+    [handleRemoveFromPlaylist, playlistId]
   )
   const moveEntry = useCallback(
-    (entryId: string, newIndex: number) => onMovePlaylistTrack?.(playlistId, entryId, newIndex),
-    [onMovePlaylistTrack, playlistId]
+    (entryId: string, newIndex: number) => handleMovePlaylistTrack?.(playlistId, entryId, newIndex),
+    [handleMovePlaylistTrack, playlistId]
   )
   const enqueueEntry = useCallback(
-    (t: Track) => onEnqueuePlaylistTrack?.(t),
-    [onEnqueuePlaylistTrack]
+    (t: Track) => handleEnqueuePlaylistTrack?.(t),
+    [handleEnqueuePlaylistTrack]
   )
-  const toggleLike = useCallback((t: Track) => onToggleLikeTrack?.(t), [onToggleLikeTrack])
-  const downloadTrack = useCallback((t: Track) => onDownloadTrack?.(t), [onDownloadTrack])
+  const toggleLike = useCallback((t: Track) => handleToggleLikeTrack?.(t), [handleToggleLikeTrack])
+  const downloadTrack = useCallback((t: Track) => handleDownloadTrack?.(t), [handleDownloadTrack])
   const removeDownload = useCallback(
-    (t: Track) => onRemoveTrackDownload?.(t),
-    [onRemoveTrackDownload]
+    (t: Track) => handleRemoveTrackDownload?.(t),
+    [handleRemoveTrackDownload]
   )
 
   const renderRow = (track: PlaylistTrackItem, i: number, virtualStyle?: React.CSSProperties) => (
@@ -751,15 +724,15 @@ function PlaylistTracksList({
       track={track}
       index={i}
       trackCount={tracks.length}
-      onPlayTrack={onPlayTrack}
+      handlePlayTrack={handlePlayTrack}
       onRemoveEntry={
-        onRemoveTrackFromPlaylist && !isSystemPlaylistId(playlistId) ? removeEntry : undefined
+        handleRemoveFromPlaylist && !isSystemPlaylistId(playlistId) ? removeEntry : undefined
       }
-      onMoveEntry={onMovePlaylistTrack ? moveEntry : undefined}
-      onEnqueueTrack={onEnqueuePlaylistTrack ? enqueueEntry : undefined}
-      onToggleLikeTrack={onToggleLikeTrack ? toggleLike : undefined}
-      onDownloadTrack={onDownloadTrack ? downloadTrack : undefined}
-      onRemoveTrackDownload={onRemoveTrackDownload ? removeDownload : undefined}
+      onMoveEntry={handleMovePlaylistTrack ? moveEntry : undefined}
+      onEnqueueTrack={handleEnqueuePlaylistTrack ? enqueueEntry : undefined}
+      handleToggleLikeTrack={handleToggleLikeTrack ? toggleLike : undefined}
+      handleDownloadTrack={handleDownloadTrack ? downloadTrack : undefined}
+      handleRemoveTrackDownload={handleRemoveTrackDownload ? removeDownload : undefined}
       isDragging={draggingEntryId === track.playlistEntryId}
       isDropTarget={dragOverIndex === i && draggingEntryId !== null}
       onDragHandleStart={(e) => handleDragStart(e, track.playlistEntryId)}
@@ -807,13 +780,13 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
   track,
   index,
   trackCount,
-  onPlayTrack,
+  handlePlayTrack,
   onRemoveEntry,
   onMoveEntry,
   onEnqueueTrack,
-  onToggleLikeTrack,
-  onDownloadTrack,
-  onRemoveTrackDownload,
+  handleToggleLikeTrack,
+  handleDownloadTrack,
+  handleRemoveTrackDownload,
   isDragging,
   isDropTarget,
   onDragHandleStart,
@@ -826,13 +799,13 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
   track: PlaylistTrackItem
   index: number
   trackCount: number
-  onPlayTrack: (t: Track) => void
+  handlePlayTrack: (t: Track) => void
   onRemoveEntry?: (entryId: string) => void
   onMoveEntry?: (entryId: string, newIndex: number) => void
   onEnqueueTrack?: (t: Track) => void
-  onToggleLikeTrack?: (t: Track) => void
-  onDownloadTrack?: (t: Track) => void
-  onRemoveTrackDownload?: (t: Track) => void
+  handleToggleLikeTrack?: (t: Track) => void
+  handleDownloadTrack?: (t: Track) => void
+  handleRemoveTrackDownload?: (t: Track) => void
   isDragging: boolean
   isDropTarget: boolean
   onDragHandleStart: (e: React.DragEvent) => void
@@ -846,7 +819,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
   const canReorder = Boolean(onMoveEntry) && trackCount > 1
   const entryId = track.playlistEntryId
 
-  const onPlay = useCallback(() => onPlayTrack(track), [onPlayTrack, track])
+  const onPlay = useCallback(() => handlePlayTrack(track), [handlePlayTrack, track])
   const onRemove = useCallback(() => {
     if (!onRemoveEntry) return
     if (!confirmingRemove) {
@@ -857,11 +830,14 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
     onRemoveEntry(entryId)
   }, [confirmingRemove, onRemoveEntry, entryId])
   const onEnqueue = useCallback(() => onEnqueueTrack?.(track), [onEnqueueTrack, track])
-  const onToggleLike = useCallback(() => onToggleLikeTrack?.(track), [onToggleLikeTrack, track])
-  const onDownload = useCallback(() => onDownloadTrack?.(track), [onDownloadTrack, track])
+  const onToggleLike = useCallback(
+    () => handleToggleLikeTrack?.(track),
+    [handleToggleLikeTrack, track]
+  )
+  const onDownload = useCallback(() => handleDownloadTrack?.(track), [handleDownloadTrack, track])
   const onRemoveDownload = useCallback(
-    () => onRemoveTrackDownload?.(track),
-    [onRemoveTrackDownload, track]
+    () => handleRemoveTrackDownload?.(track),
+    [handleRemoveTrackDownload, track]
   )
   const onMoveUp = useCallback(() => {
     if (!onMoveEntry || index <= 0) return
@@ -947,9 +923,13 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
         </div>
         <span className="type-body-sm shrink-0 tabular-nums text-subtle">{durationLabel}</span>
       </button>
-      {(onEnqueueTrack || onToggleLikeTrack || onDownloadTrack || canReorder || onRemoveEntry) && (
+      {(onEnqueueTrack ||
+        handleToggleLikeTrack ||
+        handleDownloadTrack ||
+        canReorder ||
+        onRemoveEntry) && (
         <div className="flex shrink-0 items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-          {onToggleLikeTrack && (
+          {handleToggleLikeTrack && (
             <IconButton
               type="button"
               size="sm"
@@ -963,7 +943,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
               <Heart className={cn("h-4 w-4", isLiked && "fill-current")} />
             </IconButton>
           )}
-          {onDownloadTrack && (
+          {handleDownloadTrack && (
             <IconButton
               type="button"
               size="sm"

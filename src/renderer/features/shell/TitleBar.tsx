@@ -1,6 +1,6 @@
 import { Minus, Square, X } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import type { PlayerState } from "src/shared/types/music"
+import { useAppStore } from "@/stores/app.store"
 
 /** Minimal SVG icon for the "restore down" window state (two overlapping rectangles). */
 function RestoreIcon({ className }: { className?: string }) {
@@ -23,13 +23,12 @@ function RestoreIcon({ className }: { className?: string }) {
   )
 }
 
-interface TitleBarProps {
-  playerState: PlayerState | null
-  currentArtwork: string | null
-  currentArtist: string
-}
-
-export function TitleBar({ playerState, currentArtwork, currentArtist }: TitleBarProps) {
+export function TitleBar() {
+  const playerState = useAppStore((s) => s.playerState)
+  const queue = useAppStore((s) => s.queue)
+  const currentQueueItem = queue.find((q) => q.id === playerState?.queueItemId)
+  const currentArtwork = currentQueueItem?.track?.thumbnailUrl ?? null
+  const currentArtist = currentQueueItem?.track?.artist || "..."
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {

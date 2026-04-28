@@ -1,5 +1,6 @@
 import type { SpotifyUrlInfo } from "spotify-url-info"
 import * as spotifyUrlInfoModule from "spotify-url-info"
+import { z } from "zod"
 import {
   type ImportJob,
   type ImportSourceKind,
@@ -19,66 +20,67 @@ const spotify = (
   spotifyUrlInfoModule as unknown as { default: (f: typeof fetch) => SpotifyUrlInfo }
 ).default(globalThis.fetch)
 
+const SpotifyPlaylistPayloadSchema = z
+  .object({
+    title: z.string().optional(),
+    name: z.string().optional(),
+    playlist: z.object({ name: z.string().optional() }).optional(),
+  })
+  .passthrough()
+
+const SpotifyTrackCountSchema = z
+  .object({
+    trackCount: z.number().positive().optional(),
+    tracks: z.object({ total: z.number().positive().optional() }).optional(),
+  })
+  .passthrough()
+
+const SpotifyTrackItemSchema = z
+  .object({
+    name: z.string().optional(),
+    title: z.string().optional(),
+    artist: z.string().optional(),
+    artists: z
+      .array(z.union([z.string(), z.object({ name: z.string() }) as z.ZodType<{ name: string }>]))
+      .optional(),
+    duration_ms: z.number().optional(),
+    duration: z.number().optional(),
+  })
+  .passthrough()
+
 function readPlaylistTitle(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") return undefined
-  const c = payload as {
-    title?: unknown
-    name?: unknown
-    playlist?: { name?: unknown }
-  }
-  if (typeof c.title === "string" && c.title.trim()) return c.title.trim()
-  if (typeof c.name === "string" && c.name.trim()) return c.name.trim()
-  const n = c.playlist?.name
-  if (typeof n === "string" && n.trim()) return n.trim()
-  return undefined
+  const result = SpotifyPlaylistPayloadSchema.safeParse(payload)
+  if (!result.success) return undefined
+  const { title, name, playlist } = result.data
+  return title?.trim() || name?.trim() || playlist?.name?.trim() || undefined
 }
 
 function extractSpotifyTrackCount(value: unknown): number {
-  if (!value || typeof value !== "object") return 0
-  const c = value as { trackCount?: unknown; tracks?: { total?: unknown } }
-  if (typeof c.trackCount === "number" && Number.isFinite(c.trackCount) && c.trackCount > 0) {
-    return Math.floor(c.trackCount)
-  }
-  const t = c.tracks?.total
-  if (typeof t === "number" && Number.isFinite(t) && t > 0) return Math.floor(t)
-  return 0
+  const result = SpotifyTrackCountSchema.safeParse(value)
+  if (!result.success) return 0
+  return Math.floor(result.data.trackCount ?? result.data.tracks?.total ?? 0)
 }
 
 function toSpotifyRow(value: unknown): SpotifyRow | null {
-  if (!value || typeof value !== "object") return null
-  const e = value as {
-    name?: unknown
-    title?: unknown
-    artist?: unknown
-    artists?: unknown
-    duration_ms?: unknown
-    duration?: unknown
-  }
-  const title =
-    (typeof e.name === "string" && e.name.trim()) || (typeof e.title === "string" && e.title.trim())
-  if (!title) return null
-  let artist: string | undefined
-  if (typeof e.artist === "string" && e.artist.trim()) {
-    artist = e.artist.trim()
-  } else if (Array.isArray(e.artists)) {
-    const names = e.artists
-      .map((a) => {
-        if (typeof a === "string") return a.trim()
-        if (
-          a &&
-          typeof a === "object" &&
-          "name" in a &&
-          typeof (a as { name: unknown }).name === "string"
-        ) {
-          return (a as { name: string }).name.trim()
-        }
-        return ""
-      })
+  const result = SpotifyTrackItemSchema.safeParse(value)
+  if (!result.success) return null
+  const { name, title, artist, artists, duration_ms, duration } = result.data
+  const trackTitle = (name ?? title ?? "").trim()
+  if (!trackTitle) return null
+  let trackArtist: string | undefined
+  if (artist?.trim()) {
+    trackArtist = artist.trim()
+  } else if (artists?.length) {
+    const names = artists
+      .map((a) => (typeof a === "string" ? a.trim() : a.name.trim()))
       .filter(Boolean)
-    if (names.length) artist = names.join(", ")
+    if (names.length) trackArtist = names.join(", ")
   }
-  const durationMs = normalizeDurationMs(e.duration_ms ?? e.duration)
-  return { title, artist, durationMs }
+  return {
+    title: trackTitle,
+    artist: trackArtist,
+    durationMs: normalizeDurationMs(duration_ms ?? duration),
+  }
 }
 
 function normalizeDurationMs(v: unknown): number | undefined {

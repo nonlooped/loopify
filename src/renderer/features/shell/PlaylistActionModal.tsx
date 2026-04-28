@@ -1,30 +1,28 @@
 import { Pencil, Plus, Trash2 } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/Button"
 import { ModalFrame } from "@/components/ModalFrame"
 import { TextField } from "@/components/TextField"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
+import { useAppStore } from "@/stores/app.store"
 
 export type PlaylistActionState =
   | { kind: "create" }
   | { kind: "rename"; id: string; currentName: string }
   | { kind: "delete"; id: string; name: string }
 
-interface PlaylistActionModalProps {
-  state: PlaylistActionState | null
-  onDismiss: () => void
-  onSubmitCreate: (name: string) => void
-  onSubmitRename: (id: string, name: string) => void
-  onSubmitDelete: (id: string) => void
-}
-
-export function PlaylistActionModal({
-  state,
-  onDismiss,
-  onSubmitCreate,
-  onSubmitRename,
-  onSubmitDelete,
-}: PlaylistActionModalProps) {
+export function PlaylistActionModal() {
+  const state = useAppStore((s) => s.playlistAction)
+  const onDismiss = useCallback(() => useAppStore.getState().setPlaylistAction(null), [])
+  const onSubmitCreate = useCallback((name: string) => {
+    useAppStore.getState().submitPlaylistCreate(name)
+  }, [])
+  const onSubmitRename = useCallback((id: string, name: string) => {
+    useAppStore.getState().submitPlaylistRename(id, name)
+  }, [])
+  const onSubmitDelete = useCallback((id: string) => {
+    useAppStore.getState().submitPlaylistDelete(id)
+  }, [])
   const backdropRef = useRef<HTMLDivElement>(null)
   const { shouldRender, showOverlay, onBackdropTransitionEnd } = useOverlayPresence(state != null)
   const [renderState, setRenderState] = useState<PlaylistActionState | null>(null)

@@ -24,6 +24,7 @@ data
 .claude
 CLAUDE.md
 AGENTS.md
+GEMINI.md
 
 # Testing
 coverage
@@ -42,3 +43,6 @@ PRODUCT.md
 
 # Lock files
 skills-lock.json
+
+# Fallow
+.fallow

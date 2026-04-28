@@ -1,6 +1,25 @@
 import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import {
   CheckCircle2,
   Download,
+  GripVertical,
   Heart,
   ListMusic,
   PanelRightClose,
@@ -8,70 +27,275 @@ import {
   Play,
   X,
 } from "lucide-react"
-import { memo, useEffect, useState } from "react"
+import { memo, useEffect, useMemo, useRef } from "react"
 import type { QueueItem, Track } from "src/shared/types/music"
 import { EmptyState } from "@/components/EmptyState"
 import { IconButton } from "@/components/IconButton"
 import { cn } from "@/lib/cn"
-import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut } from "@/lib/shortcut"
+import { useAppStore } from "@/stores/app.store"
 
-interface QueueOverlayProps {
+const VIRTUALIZATION_THRESHOLD = 120
+const QUEUE_ROW_ESTIMATE = 60
+
+interface QueueOverlayInnerProps {
   compact?: boolean
+}
+
+interface SortableQueueItemProps {
+  item: QueueItem
+  index: number
+  virtualStyle?: React.CSSProperties
+  isActive: boolean
   isOpen: boolean
-  queue: QueueItem[]
-  currentQueueItemId: string | null
   onPlay: (item: QueueItem) => void
   onRemove: (id: string) => void
-  onClear: () => void
-  onToggle: () => void
   onToggleLikeTrack: (track: Track) => void
   onDownloadTrack: (track: Track) => void
   onRemoveTrackDownload: (track: Track) => void
-  confirmClear?: boolean
-  onSetConfirmClear?: (v: boolean) => void
 }
 
-function QueueOverlayImpl({
-  compact = false,
+function SortableQueueItem({
+  item,
+  index,
+  virtualStyle,
+  isActive,
   isOpen,
-  queue,
-  currentQueueItemId,
   onPlay,
   onRemove,
-  onClear,
-  onToggle,
   onToggleLikeTrack,
   onDownloadTrack,
   onRemoveTrackDownload,
-  confirmClear: externalConfirmClear,
-  onSetConfirmClear,
-}: QueueOverlayProps) {
-  const [internalConfirmClear, setInternalConfirmClear] = useState(false)
-  const confirmClear = externalConfirmClear ?? internalConfirmClear
-  const setConfirmClear = onSetConfirmClear ?? setInternalConfirmClear
+}: SortableQueueItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  })
+
+  const style: React.CSSProperties = {
+    ...virtualStyle,
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 1 : undefined,
+  }
+
+  const title = item.track?.title || item.sourceUrl
+  const artist = item.track?.artist || "Unknown"
+  const isLiked = Boolean(item.track?.likedAt)
+  const isDownloaded = item.track?.downloadStatus === "downloaded"
+  const isDownloadBusy =
+    item.track?.downloadStatus === "queued" || item.track?.downloadStatus === "downloading"
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "group flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-ui ease-out-quart",
+        isActive ? "bg-accent/10 text-foreground" : "hover:bg-white/5 text-muted",
+        isDragging && "shadow-lg bg-surface-elevated"
+      )}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-subtle hover:text-foreground shrink-0"
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onPlay(item)}
+        title={`${title} - ${artist}`}
+        aria-label={`Play ${title}`}
+        className={cn(
+          "group/icon relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border transition-[transform,colors,opacity] duration-ui ease-out-quart hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:hover:scale-100",
+          isActive
+            ? "border-accent/40 bg-accent/12 shadow-[0_0_0_1px_oklch(0.55_0.12_260_/_0.18)]"
+            : "border-white/8 bg-white/[0.04] hover:border-white/14 hover:bg-white/[0.08]"
+        )}
+      >
+        {item.track?.thumbnailUrl ? (
+          <img
+            src={item.track.thumbnailUrl}
+            alt=""
+            className={cn(
+              "h-full w-full object-cover transition-opacity duration-ui ease-out-quart",
+              isActive ? "opacity-55" : "opacity-95"
+            )}
+            loading={index < 8 ? "eager" : "lazy"}
+            decoding="async"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-raised text-subtle">
+            <ListMusic className="h-5 w-5" />
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,oklch(1_0_0/.12),transparent_40%,oklch(0_0_0/.18))]" />
+
+        {isActive ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-2.5 w-2.5 rounded-full bg-accent animate-pulse motion-reduce:animate-none" />
+          </div>
+        ) : (
+          <div className="absolute inset-0 hidden items-center justify-center bg-canvas/50 group-hover/icon:flex group-focus-visible/icon:flex">
+            <Play className="h-4 w-4 fill-foreground text-foreground" />
+          </div>
+        )}
+      </button>
+
+      {isOpen ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onPlay(item)}
+            title={`${title} - ${artist}`}
+            className="min-w-0 flex-1 overflow-hidden text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "type-body-sm block truncate text-nowrap animate-in-sidebar-copy",
+                  isActive ? "text-accent" : "text-foreground"
+                )}
+              >
+                {title}
+              </span>
+              {item.track?.downloadStatus === "downloaded" && (
+                <CheckCircle2
+                  className="h-3.5 w-3.5 shrink-0 text-accent/70 animate-in-sidebar-copy"
+                  aria-label="Available offline"
+                />
+              )}
+              {isDownloadBusy && (
+                <span
+                  className="h-3.5 w-3.5 shrink-0 animate-spin-slow rounded-full border border-accent/40 border-t-accent animate-in-sidebar-copy"
+                  role="img"
+                  aria-label="Downloading"
+                />
+              )}
+            </div>
+            <span className="type-meta block truncate text-nowrap text-muted animate-in-sidebar-copy">
+              {artist}
+            </span>
+          </button>
+          {item.track && (
+            <>
+              <IconButton
+                size="sm"
+                onClick={() => onToggleLikeTrack(item.track as Track)}
+                aria-label={isLiked ? `Unlike ${title}` : `Like ${title}`}
+                title={isLiked ? "Unlike song" : "Like song"}
+                active={isLiked}
+                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+              >
+                <Heart className={cn("h-4 w-4", isLiked && "fill-current")} />
+              </IconButton>
+              <IconButton
+                size="sm"
+                onClick={() => {
+                  if (!item.track) return
+                  if (isDownloaded) onRemoveTrackDownload(item.track)
+                  else onDownloadTrack(item.track)
+                }}
+                aria-label={isDownloaded ? `Remove download for ${title}` : `Download ${title}`}
+                title={downloadTitle(item.track.downloadStatus, item.track.downloadProgress)}
+                active={isDownloaded}
+                disabled={isDownloadBusy}
+                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+              >
+                {isDownloaded ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+              </IconButton>
+            </>
+          )}
+          <IconButton
+            size="sm"
+            onClick={() => onRemove(item.id)}
+            aria-label={`Remove ${item.track?.title || "queue item"} from queue`}
+            title="Remove from queue"
+            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+          >
+            <X className="h-4 w-4" />
+          </IconButton>
+        </>
+      ) : null}
+    </li>
+  )
+}
+
+function QueueOverlayImpl({ compact = false }: QueueOverlayInnerProps) {
+  const isOpen = useAppStore((s) => s.isQueueOpen)
+  const queue = useAppStore((s) => s.queue)
+  const playerState = useAppStore((s) => s.playerState)
+  const currentQueueItemId = playerState?.queueItemId ?? null
+  const queueOnPlay = useAppStore((s) => s.queueOnPlay)
+  const queueOnRemove = useAppStore((s) => s.queueOnRemove)
+  const queueOnReorder = useAppStore((s) => s.queueOnReorder)
+  const queueOnClear = useAppStore((s) => s.queueOnClear)
+  const toggleQueue = useAppStore((s) => s.toggleQueue)
+  const handleToggleLikeTrack = useAppStore((s) => s.handleToggleLikeTrack)
+  const handleDownloadTrack = useAppStore((s) => s.handleDownloadTrack)
+  const handleRemoveTrackDownload = useAppStore((s) => s.handleRemoveTrackDownload)
+  const confirmClear = useAppStore((s) => s.queueClearConfirming)
+  const setQueueClearConfirming = useAppStore((s) => s.setQueueClearConfirming)
 
   useEffect(() => {
-    if (onSetConfirmClear) return // external owner handles the timeout
     if (!confirmClear) return
-    const t = window.setTimeout(() => setConfirmClear(false), 3000)
+    const t = window.setTimeout(() => setQueueClearConfirming(false), 3000)
     return () => window.clearTimeout(t)
-  }, [confirmClear, setConfirmClear, onSetConfirmClear])
+  }, [confirmClear, setQueueClearConfirming])
 
   useEffect(() => {
-    if (!isOpen) setConfirmClear(false)
-  }, [isOpen, setConfirmClear])
+    if (!isOpen) setQueueClearConfirming(false)
+  }, [isOpen, setQueueClearConfirming])
+
+  const parentRef = useRef<HTMLDivElement>(null)
+  const shouldVirtualize = queue.length > VIRTUALIZATION_THRESHOLD
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(TouchSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  const virtualizer = useVirtualizer({
+    count: queue.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => QUEUE_ROW_ESTIMATE,
+    overscan: 8,
+    enabled: shouldVirtualize,
+  })
 
   const handleClear = () => {
     if (queue.length === 0) return
     if (!confirmClear) {
-      setConfirmClear(true)
+      setQueueClearConfirming(true)
       return
     }
-    setConfirmClear(false)
-    onClear()
+    setQueueClearConfirming(false)
+    void queueOnClear()
   }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      queueOnReorder(
+        String(active.id),
+        queue.findIndex((item) => item.id === over.id)
+      )
+    }
+  }
+
+  const queueIds = useMemo(() => queue.map((item) => item.id), [queue])
 
   return (
     <>
@@ -80,7 +304,7 @@ function QueueOverlayImpl({
           type="button"
           className="cursor-pointer absolute inset-0 z-40 bg-canvas/60"
           aria-label="Close queue"
-          onClick={onToggle}
+          onClick={() => toggleQueue()}
         />
       ) : null}
       <aside
@@ -102,7 +326,7 @@ function QueueOverlayImpl({
         <div className="px-2 pb-3 pt-6">
           <button
             type="button"
-            onClick={onToggle}
+            onClick={() => toggleQueue()}
             title={isOpen ? "Collapse queue" : `Expand queue (${formatModShortcut("L")})`}
             aria-label={isOpen ? "Collapse queue" : "Expand queue"}
             className="cursor-pointer group flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left text-muted transition-colors duration-ui ease-out-quart hover:bg-white/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -156,182 +380,86 @@ function QueueOverlayImpl({
           </button>
         </div>
 
-        <div className="ol-queue-inner flex min-h-0 flex-1 flex-col px-2 pb-6">
-          <ul className="flex min-h-0 flex-1 list-none flex-col gap-1 overflow-y-auto p-0">
-            {queue.length === 0 ? (
-              <div className={cn("flex flex-1 items-center", isOpen ? "px-3" : "justify-center")}>
-                {isOpen ? (
-                  <EmptyState
-                    className="w-full animate-in-sidebar-copy"
-                    density="compact"
-                    align="left"
-                    icon={<ListMusic className="h-5 w-5" aria-hidden />}
-                    eyebrow="Queue"
-                    title="Nothing is lined up yet"
-                    description={`Use Search (${formatModShortcut("K")}) to start playback or stage a few tracks for later.`}
-                  />
-                ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-white/[0.035] text-subtle">
-                    <ListMusic className="h-5 w-5 shrink-0" />
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {queue.map((item, index) => {
-              const isActive = item.id === currentQueueItemId
-              const title = item.track?.title || item.sourceUrl
-              const artist = item.track?.artist || "Unknown"
-              const isLiked = Boolean(item.track?.likedAt)
-              const isDownloaded = item.track?.downloadStatus === "downloaded"
-              const isDownloadBusy =
-                item.track?.downloadStatus === "queued" ||
-                item.track?.downloadStatus === "downloading"
-
-              return (
-                <li
-                  key={item.id}
-                  draggable={Boolean(item.track)}
-                  onDragStart={(e) => {
-                    if (!item.track) return
-                    e.dataTransfer.setData(DRAG_MIME_TYPES.TRACK, JSON.stringify(item.track))
-                    e.dataTransfer.effectAllowed = "copy"
-                  }}
-                  className={cn(
-                    "group flex w-full min-w-0 cursor-grab items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-ui ease-out-quart active:cursor-grabbing",
-                    isActive ? "bg-accent/10 text-foreground" : "hover:bg-white/5 text-muted"
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onPlay(item)}
-                    title={`${title} - ${artist}`}
-                    aria-label={`Play ${title}`}
-                    className={cn(
-                      "group/icon relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border transition-[transform,colors,opacity] duration-ui ease-out-quart hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:hover:scale-100",
-                      isActive
-                        ? "border-accent/40 bg-accent/12 shadow-[0_0_0_1px_oklch(0.55_0.12_260_/_0.18)]"
-                        : "border-white/8 bg-white/[0.04] hover:border-white/14 hover:bg-white/[0.08]"
-                    )}
+        <div
+          ref={parentRef}
+          className="ol-queue-inner flex min-h-0 flex-1 flex-col px-2 pb-6 overflow-y-auto"
+        >
+          {queue.length === 0 ? (
+            <div className={cn("flex flex-1 items-center", isOpen ? "px-3" : "justify-center")}>
+              {isOpen ? (
+                <EmptyState
+                  className="w-full animate-in-sidebar-copy"
+                  density="compact"
+                  align="left"
+                  icon={<ListMusic className="h-5 w-5" aria-hidden />}
+                  eyebrow="Queue"
+                  title="Nothing is lined up yet"
+                  description={`Use Search (${formatModShortcut("K")}) to start playback or stage a few tracks for later.`}
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-white/[0.035] text-subtle">
+                  <ListMusic className="h-5 w-5 shrink-0" />
+                </div>
+              )}
+            </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={queueIds} strategy={verticalListSortingStrategy}>
+                {shouldVirtualize ? (
+                  <ul
+                    className="relative list-none p-0"
+                    style={{ height: `${virtualizer.getTotalSize()}px` }}
                   >
-                    {item.track?.thumbnailUrl ? (
-                      <img
-                        src={item.track.thumbnailUrl}
-                        alt=""
-                        className={cn(
-                          "h-full w-full object-cover transition-opacity duration-ui ease-out-quart",
-                          isActive ? "opacity-55" : "opacity-95"
-                        )}
-                        loading={index < 8 ? "eager" : "lazy"}
-                        decoding="async"
+                    {virtualizer.getVirtualItems().map((virtualItem) => {
+                      const item = queue[virtualItem.index]
+                      return (
+                        <SortableQueueItem
+                          key={item.id}
+                          item={item}
+                          index={virtualItem.index}
+                          isActive={item.id === currentQueueItemId}
+                          isOpen={isOpen}
+                          onPlay={queueOnPlay}
+                          onRemove={queueOnRemove}
+                          onToggleLikeTrack={handleToggleLikeTrack}
+                          onDownloadTrack={handleDownloadTrack}
+                          onRemoveTrackDownload={handleRemoveTrackDownload}
+                          virtualStyle={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualItem.start}px)`,
+                          }}
+                        />
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <ul className="flex list-none flex-col gap-1 p-0">
+                    {queue.map((item, index) => (
+                      <SortableQueueItem
+                        key={item.id}
+                        item={item}
+                        index={index}
+                        isActive={item.id === currentQueueItemId}
+                        isOpen={isOpen}
+                        onPlay={queueOnPlay}
+                        onRemove={queueOnRemove}
+                        onToggleLikeTrack={handleToggleLikeTrack}
+                        onDownloadTrack={handleDownloadTrack}
+                        onRemoveTrackDownload={handleRemoveTrackDownload}
                       />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-raised text-subtle">
-                        <ListMusic className="h-5 w-5" />
-                      </div>
-                    )}
-
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,oklch(1_0_0/.12),transparent_40%,oklch(0_0_0/.18))]" />
-
-                    {isActive ? (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="h-2.5 w-2.5 rounded-full bg-accent animate-pulse motion-reduce:animate-none" />
-                      </div>
-                    ) : (
-                      <div className="absolute inset-0 hidden items-center justify-center bg-canvas/50 group-hover/icon:flex group-focus-visible/icon:flex">
-                        <Play className="h-4 w-4 fill-foreground text-foreground" />
-                      </div>
-                    )}
-                  </button>
-
-                  {isOpen ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onPlay(item)}
-                        title={`${title} - ${artist}`}
-                        className="min-w-0 flex-1 overflow-hidden text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "type-body-sm block truncate text-nowrap animate-in-sidebar-copy",
-                              isActive ? "text-accent" : "text-foreground"
-                            )}
-                          >
-                            {title}
-                          </span>
-                          {item.track?.downloadStatus === "downloaded" && (
-                            <CheckCircle2
-                              className="h-3.5 w-3.5 shrink-0 text-accent/70 animate-in-sidebar-copy"
-                              aria-label="Available offline"
-                            />
-                          )}
-                          {isDownloadBusy && (
-                            <span
-                              className="h-3.5 w-3.5 shrink-0 animate-spin-slow rounded-full border border-accent/40 border-t-accent animate-in-sidebar-copy"
-                              role="img"
-                              aria-label="Downloading"
-                            />
-                          )}
-                        </div>
-                        <span className="type-meta block truncate text-nowrap text-muted animate-in-sidebar-copy">
-                          {artist}
-                        </span>
-                      </button>
-                      {item.track && (
-                        <>
-                          <IconButton
-                            size="sm"
-                            onClick={() => onToggleLikeTrack(item.track as Track)}
-                            aria-label={isLiked ? `Unlike ${title}` : `Like ${title}`}
-                            title={isLiked ? "Unlike song" : "Like song"}
-                            active={isLiked}
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-                          >
-                            <Heart className={cn("h-4 w-4", isLiked && "fill-current")} />
-                          </IconButton>
-                          <IconButton
-                            size="sm"
-                            onClick={() => {
-                              if (!item.track) return
-                              if (isDownloaded) onRemoveTrackDownload(item.track)
-                              else onDownloadTrack(item.track)
-                            }}
-                            aria-label={
-                              isDownloaded ? `Remove download for ${title}` : `Download ${title}`
-                            }
-                            title={downloadTitle(
-                              item.track.downloadStatus,
-                              item.track.downloadProgress
-                            )}
-                            active={isDownloaded}
-                            disabled={isDownloadBusy}
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-                          >
-                            {isDownloaded ? (
-                              <CheckCircle2 className="h-4 w-4" />
-                            ) : (
-                              <Download className="h-4 w-4" />
-                            )}
-                          </IconButton>
-                        </>
-                      )}
-                      <IconButton
-                        size="sm"
-                        onClick={() => onRemove(item.id)}
-                        aria-label={`Remove ${item.track?.title || "queue item"} from queue`}
-                        title="Remove from queue"
-                        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-                      >
-                        <X className="h-4 w-4" />
-                      </IconButton>
-                    </>
-                  ) : null}
-                </li>
-              )
-            })}
-          </ul>
+                    ))}
+                  </ul>
+                )}
+              </SortableContext>
+            </DndContext>
+          )}
         </div>
       </aside>
     </>

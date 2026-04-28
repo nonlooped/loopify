@@ -10,7 +10,7 @@ import {
   Search,
   Settings,
 } from "lucide-react"
-import { memo, type ReactNode, useCallback, useState } from "react"
+import { type ReactNode, useCallback, useState } from "react"
 import {
   LIKED_SONGS_PLAYLIST_ID,
   OFFLINE_SONGS_PLAYLIST_ID,
@@ -21,6 +21,7 @@ import { LoopifyWordmark } from "@/components/branding/LoopifyWordmark"
 import { cn } from "@/lib/cn"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { formatModShortcut, formatModShortcutTitle } from "@/lib/shortcut"
+import { useAppStore } from "@/stores/app.store"
 
 const rowBase =
   "group relative flex w-full min-w-0 min-h-[44px] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
@@ -43,80 +44,50 @@ const iconWrap = (active: boolean) =>
     active ? "bg-accent/15 text-accent" : "bg-white/5 text-muted group-hover:text-foreground"
   )
 
-interface NavRailProps {
-  isExpanded: boolean
-  onToggleExpand: () => void
-  activePlaylistId: string | null
-  onGoToCollection: () => void
-  onSelectPlaylist: (id: string) => void
-  onOpenSearch: () => void
-  onOpenSettings: () => void
-  onOpenImport: () => void
-  onCreatePlaylist: () => void
-  queueLength: number
-  isQueueOpen: boolean
-  onToggleQueue: () => void
-  onAddTrackToPlaylist?: (playlistId: string, track: Track) => void
-}
-
-function NavRailImpl({
-  isExpanded,
-  onToggleExpand,
-  activePlaylistId,
-  onGoToCollection,
-  onSelectPlaylist,
-  onOpenSearch,
-  onOpenSettings,
-  onOpenImport,
-  onCreatePlaylist,
-  queueLength,
-  isQueueOpen,
-  onToggleQueue,
-  onAddTrackToPlaylist,
-}: NavRailProps) {
+export function NavRail() {
+  const isExpanded = useAppStore((s) => s.isSidebarExpanded)
+  const activePlaylistId = useAppStore((s) => s.activePlaylistId)
+  const queueLength = useAppStore((s) => s.queue.length)
+  const isQueueOpen = useAppStore((s) => s.isQueueOpen)
+  const selectPlaylist = useAppStore((s) => s.selectPlaylistWithTransition)
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar)
+  const toggleSearch = useAppStore((s) => s.toggleSearch)
+  const toggleSettings = useAppStore((s) => s.toggleSettings)
+  const toggleImport = useAppStore((s) => s.toggleImport)
+  const handleCreatePlaylist = useAppStore((s) => s.handleCreatePlaylist)
+  const toggleQueue = useAppStore((s) => s.toggleQueue)
   const atCollection = activePlaylistId == null
   const likedActive = activePlaylistId === LIKED_SONGS_PLAYLIST_ID
   const offlineActive = activePlaylistId === OFFLINE_SONGS_PLAYLIST_ID
   const [isLikedDropTarget, setIsLikedDropTarget] = useState(false)
 
-  const handleLikedDragOver = useCallback(
-    (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!onAddTrackToPlaylist) return
-      if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
-      e.preventDefault()
-      e.dataTransfer.dropEffect = "copy"
-      setIsLikedDropTarget(true)
-    },
-    [onAddTrackToPlaylist]
-  )
+  const handleLikedDragOver = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
+    if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "copy"
+    setIsLikedDropTarget(true)
+  }, [])
 
   const handleLikedDragLeave = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
     setIsLikedDropTarget(false)
   }, [])
 
-  const handleLikedDrop = useCallback(
-    (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!onAddTrackToPlaylist) return
-      const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
-      setIsLikedDropTarget(false)
-      if (!raw) return
-      e.preventDefault()
-      try {
-        const track = JSON.parse(raw) as Track
-        onAddTrackToPlaylist(LIKED_SONGS_PLAYLIST_ID, track)
-      } catch (err) {
-        console.error("Failed to parse dropped track payload", err)
-      }
-    },
-    [onAddTrackToPlaylist]
-  )
+  const handleLikedDrop = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
+    const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
+    setIsLikedDropTarget(false)
+    if (!raw) return
+    e.preventDefault()
+    try {
+      const track = JSON.parse(raw) as Track
+      useAppStore.getState().handleAddTrackToPlaylist(LIKED_SONGS_PLAYLIST_ID, track)
+    } catch (err) {
+      console.error("Failed to parse dropped track payload", err)
+    }
+  }, [])
 
-  const goToLiked = useCallback(() => onSelectPlaylist(LIKED_SONGS_PLAYLIST_ID), [onSelectPlaylist])
-  const goToOffline = useCallback(
-    () => onSelectPlaylist(OFFLINE_SONGS_PLAYLIST_ID),
-    [onSelectPlaylist]
-  )
+  const goToLiked = useCallback(() => selectPlaylist(LIKED_SONGS_PLAYLIST_ID), [selectPlaylist])
+  const goToOffline = useCallback(() => selectPlaylist(OFFLINE_SONGS_PLAYLIST_ID), [selectPlaylist])
 
   return (
     <aside
@@ -139,7 +110,7 @@ function NavRailImpl({
               {!isExpanded ? (
                 <button
                   type="button"
-                  onClick={onToggleExpand}
+                  onClick={() => toggleSidebar()}
                   title="Expand sidebar"
                   aria-label="Expand sidebar"
                   className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-xl p-0 transition-transform duration-ui ease-out-quart hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50 motion-reduce:transition-none motion-reduce:hover:scale-100"
@@ -169,7 +140,7 @@ function NavRailImpl({
               label="Library"
               active={atCollection}
               selection="location"
-              onClick={onGoToCollection}
+              onClick={() => selectPlaylist(null)}
               title="Library"
               icon={<LayoutGrid className="h-4 w-4" strokeWidth={2} />}
             />
@@ -182,9 +153,9 @@ function NavRailImpl({
               title="Liked songs"
               icon={<Heart className="h-4 w-4" strokeWidth={2} />}
               isDropTarget={isLikedDropTarget}
-              onDragOver={onAddTrackToPlaylist ? handleLikedDragOver : undefined}
-              onDragLeave={onAddTrackToPlaylist ? handleLikedDragLeave : undefined}
-              onDrop={onAddTrackToPlaylist ? handleLikedDrop : undefined}
+              onDragOver={handleLikedDragOver}
+              onDragLeave={handleLikedDragLeave}
+              onDrop={handleLikedDrop}
             />
             <NavRow
               expanded={isExpanded}
@@ -204,7 +175,7 @@ function NavRailImpl({
               hint={formatModShortcut("K")}
               active={false}
               selection="none"
-              onClick={onOpenSearch}
+              onClick={() => toggleSearch(true)}
               title={`Search (${formatModShortcutTitle("K")})`}
               icon={<Search className="h-4 w-4" strokeWidth={2} />}
             />
@@ -213,7 +184,7 @@ function NavRailImpl({
               label="Import"
               active={false}
               selection="none"
-              onClick={onOpenImport}
+              onClick={() => toggleImport(true)}
               title="Import a playlist"
               icon={<Link className="h-4 w-4" strokeWidth={2} />}
             />
@@ -222,7 +193,7 @@ function NavRailImpl({
               label="New playlist"
               active={false}
               selection="none"
-              onClick={onCreatePlaylist}
+              onClick={handleCreatePlaylist}
               title="New playlist"
               icon={<Plus className="h-4 w-4" strokeWidth={2} />}
             />
@@ -235,7 +206,7 @@ function NavRailImpl({
               hint={queueLength > 0 ? String(queueLength) : undefined}
               active={isQueueOpen}
               selection="toggle"
-              onClick={onToggleQueue}
+              onClick={toggleQueue}
               title={isQueueOpen ? "Close queue" : "Open queue"}
               icon={<ListMusic className="h-4 w-4" strokeWidth={2} />}
             />
@@ -245,7 +216,7 @@ function NavRailImpl({
         <div className="mt-auto flex flex-col gap-0.5 pt-4">
           <button
             type="button"
-            onClick={onToggleExpand}
+            onClick={() => toggleSidebar()}
             title={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
             aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
             className={rowInteractive}
@@ -266,7 +237,7 @@ function NavRailImpl({
             label="Settings"
             active={false}
             selection="none"
-            onClick={onOpenSettings}
+            onClick={() => toggleSettings(true)}
             title="Settings"
             icon={<Settings className="h-4 w-4" strokeWidth={2} />}
           />
@@ -275,9 +246,6 @@ function NavRailImpl({
     </aside>
   )
 }
-
-export const NavRail = memo(NavRailImpl)
-NavRail.displayName = "NavRail"
 
 function NavRow({
   expanded,

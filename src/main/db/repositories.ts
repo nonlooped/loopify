@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto"
+import { shuffle } from "lodash-es"
+import { z } from "zod"
 import type {
   AppSettings,
   DownloadStatus,
@@ -34,22 +36,21 @@ const defaultSettings: AppSettings = {
   discordPresenceEnabled: true,
 }
 
-const NUMERIC_SETTINGS = new Set<keyof AppSettings>([
-  "playbackVolume",
-  "resolverTimeoutMs",
-  "cacheTtlHours",
-  "streamCacheTtlMinutes",
-  "importMaxTracks",
-  "importMatchConcurrency",
-  "spotifyMatchScoreThreshold",
-  "metadataMinScore",
-  "importProgressThrottle",
-])
-
-const BOOLEAN_SETTINGS = new Set<keyof AppSettings>([
-  "metadataEnrichmentEnabled",
-  "discordPresenceEnabled",
-])
+const appSettingsSchema = z.object({
+  mpvPath: z.string(),
+  ytdlpPath: z.string(),
+  playbackVolume: z.number().int().min(0).max(100),
+  resolverTimeoutMs: z.number().int().positive(),
+  cacheTtlHours: z.number().int().positive(),
+  streamCacheTtlMinutes: z.number().int().positive(),
+  importMaxTracks: z.number().int().min(1).max(500),
+  importMatchConcurrency: z.number().int().min(1).max(16),
+  spotifyMatchScoreThreshold: z.number().min(0).max(1),
+  metadataEnrichmentEnabled: z.boolean(),
+  metadataMinScore: z.number().min(0).max(1),
+  importProgressThrottle: z.number().int().min(1).max(100),
+  discordPresenceEnabled: z.boolean(),
+})
 
 function id(prefix: string): string {
   return `${prefix}_${randomUUID()}`
@@ -64,23 +65,26 @@ export class SettingsRepository {
 
   get(): AppSettings {
     const rows = this.db.prepare("select key, value from settings").all() as {
-      key: keyof AppSettings
+      key: string
       value: string
     }[]
-    const settings = { ...defaultSettings }
-    for (const row of rows) {
-      if (NUMERIC_SETTINGS.has(row.key)) {
-        const n = Number(row.value)
-        if (Number.isFinite(n)) {
-          ;(settings as Record<string, unknown>)[row.key] = n
-        }
-      } else if (BOOLEAN_SETTINGS.has(row.key)) {
-        ;(settings as Record<string, unknown>)[row.key] = row.value === "true"
+
+    const raw: Record<string, unknown> = { ...defaultSettings }
+    for (const { key, value } of rows) {
+      // Basic type coercion before Zod validation
+      if (value === "true") {
+        raw[key] = true
+      } else if (value === "false") {
+        raw[key] = false
+      } else if (!Number.isNaN(Number(value)) && value.trim() !== "") {
+        raw[key] = Number(value)
       } else {
-        ;(settings as Record<string, unknown>)[row.key] = row.value
+        raw[key] = value
       }
     }
-    return settings
+
+    const result = appSettingsSchema.safeParse(raw)
+    return result.success ? result.data : defaultSettings
   }
 
   update(patch: Partial<AppSettings>): AppSettings {
@@ -727,22 +731,12 @@ export class QueueRepository {
       const anchorIndex = ids.indexOf(anchorQueueItemId)
       if (anchorIndex >= 0) {
         const [anchor] = ids.splice(anchorIndex, 1)
-        for (let i = ids.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          ;[ids[i], ids[j]] = [ids[j], ids[i]]
-        }
-        ids = [anchor, ...ids]
+        ids = [anchor, ...shuffle(ids)]
       } else {
-        for (let i = ids.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          ;[ids[i], ids[j]] = [ids[j], ids[i]]
-        }
+        ids = shuffle(ids)
       }
     } else {
-      for (let i = ids.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        ;[ids[i], ids[j]] = [ids[j], ids[i]]
-      }
+      ids = shuffle(ids)
     }
 
     const stmt = this.db.prepare("update queue_items set sort_order = ? where id = ?")
@@ -1236,16 +1230,16 @@ function mapQueueItemRow(row: DbQueueItemJoinRow): QueueItem {
   }
 }
 
+const DownloadStatusSchema = z.enum([
+  "queued",
+  "downloading",
+  "downloaded",
+  "failed",
+  "not-downloaded",
+])
+
 function normalizeDownloadStatus(value: string | null | undefined): DownloadStatus {
-  if (
-    value === "queued" ||
-    value === "downloading" ||
-    value === "downloaded" ||
-    value === "failed"
-  ) {
-    return value
-  }
-  return "not-downloaded"
+  return DownloadStatusSchema.catch("not-downloaded").parse(value)
 }
 
 function sumDurationMs(tracks: { durationMs: number | null }[]): number {

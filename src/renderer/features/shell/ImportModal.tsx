@@ -1,18 +1,16 @@
 import { HardDriveDownload, Loader2 } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/Button"
 import { ModalFrame } from "@/components/ModalFrame"
 import { TextField } from "@/components/TextField"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
+import { useAppStore } from "@/stores/app.store"
 import type { ImportJob } from "../../../shared/types/music"
 
-interface ImportModalProps {
-  isOpen: boolean
-  onClose: () => void
-  onImportComplete: () => void
-}
-
-export function ImportModal({ isOpen, onClose, onImportComplete }: ImportModalProps) {
+export function ImportModal() {
+  const isOpen = useAppStore((s) => s.isImportOpen)
+  const onClose = useCallback(() => useAppStore.getState().toggleImport(false), [])
+  const onImportComplete = useCallback(() => useAppStore.getState().refreshPlaylists(), [])
   const [url, setUrl] = useState("")
   const [isStarting, setIsStarting] = useState(false)
   const [activeJob, setActiveJob] = useState<ImportJob | null>(null)

@@ -1,4 +1,5 @@
 import type { CatalogTrack } from "../../shared/types/music"
+import { normalize, tokenList, tokenOverlapScore, tokenSet } from "../../shared/utils/string"
 
 export type MatcherEntry = {
   id?: string
@@ -107,7 +108,7 @@ function titleScore(entry: MatcherEntry, catalog: CatalogTrack): number {
   const catalogTitle = normalize(catalog.title)
   if (!entryTitle || !catalogTitle) return 0
   if (entryTitle.includes(catalogTitle)) return 1.0
-  return overlapScore(catalogTitle, entryTitle)
+  return tokenOverlapScore(catalogTitle, entryTitle)
 }
 
 function artistScore(entry: MatcherEntry, catalog: CatalogTrack): number {
@@ -115,21 +116,7 @@ function artistScore(entry: MatcherEntry, catalog: CatalogTrack): number {
   const catalogArtist = normalize(catalog.artist)
   if (!haystack || !catalogArtist) return 0
   if (haystack.includes(catalogArtist)) return 1.0
-  return overlapScore(catalogArtist, haystack)
-}
-
-function overlapScore(needle: string, haystack: string): number {
-  const needleTokens = tokenList(needle)
-  const haystackTokens = tokenSet(haystack)
-  if (needleTokens.length === 0 || haystackTokens.size === 0) return 0
-  let hit = 0
-  for (const t of needleTokens) {
-    if (haystackTokens.has(t)) hit += 1
-  }
-  const ratio = hit / needleTokens.length
-  if (ratio >= 0.8) return 0.7
-  if (ratio >= 0.5) return 0.4
-  return 0
+  return tokenOverlapScore(catalogArtist, haystack)
 }
 
 function noisePenalty(entry: MatcherEntry, catalog: CatalogTrack): number {
@@ -151,21 +138,4 @@ function isTopic(uploader: string | undefined): boolean {
 
 function isVevo(uploader: string | undefined): boolean {
   return !!uploader && /vevo/i.test(uploader)
-}
-
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\(.*?\)|\[.*?\]/g, " ")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
-function tokenList(value: string): string[] {
-  return normalize(value).split(" ").filter(Boolean)
-}
-
-function tokenSet(value: string): Set<string> {
-  return new Set(tokenList(value))
 }

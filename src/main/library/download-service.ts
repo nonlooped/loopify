@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { basename, join } from "node:path"
 import { app } from "electron"
+import pLimit from "p-limit"
 import type { Playlist, Track, TrackCandidate } from "../../shared/types/music"
 import type { LibraryRepository, SettingsRepository } from "../db/repositories"
 
@@ -11,29 +12,10 @@ type DownloadEvents = {
 
 const MAX_CONCURRENT_DOWNLOADS = 3
 
-class Semaphore {
-  private running = 0
-  private queue: (() => void)[] = []
-  constructor(private readonly max: number) {}
-  async acquire<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.running >= this.max) {
-      await new Promise<void>((resolve) => this.queue.push(resolve))
-    }
-    this.running++
-    try {
-      return await fn()
-    } finally {
-      this.running--
-      const next = this.queue.shift()
-      next?.()
-    }
-  }
-}
-
 export class DownloadService {
   private readonly inFlight = new Set<string>()
   private readonly downloadsDir = join(app.getPath("userData"), "downloads")
-  private readonly semaphore = new Semaphore(MAX_CONCURRENT_DOWNLOADS)
+  private readonly limit = pLimit(MAX_CONCURRENT_DOWNLOADS)
 
   constructor(
     private readonly library: LibraryRepository,
@@ -64,7 +46,7 @@ export class DownloadService {
       if (track.downloadStatus === "downloaded" || this.inFlight.has(track.id)) {
         continue
       }
-      void this.semaphore.acquire(() => this.start(track))
+      void this.limit(() => this.start(track))
     }
     return this.library.listPlaylists()
   }

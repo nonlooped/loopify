@@ -2,6 +2,7 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { is } from "@electron-toolkit/utils"
 import { app, BrowserWindow, Menu } from "electron"
+import log from "electron-log/main.js"
 import { ipcChannels } from "../shared/contracts/ipc"
 import { createDatabase, type DatabaseConnection } from "./db/database"
 import {
@@ -20,6 +21,9 @@ import { PlayerService } from "./player/player-service"
 import { DISCORD_APPLICATION_ID, DiscordPresenceService } from "./presence/discord-presence-service"
 import { ResolverService } from "./resolver/resolver-service"
 import { UpdaterService } from "./updater/updater-service"
+
+log.initialize()
+log.info("Loopify starting...")
 
 let player: PlayerService | null = null
 let presence: DiscordPresenceService | null = null

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import ms from "ms"
 import type {
   CatalogTrack,
   Provider,
@@ -175,11 +176,11 @@ export class ResolverService {
   }
 
   private metadataExpiresAt(): number {
-    return Date.now() + this.settings.get().cacheTtlHours * 60 * 60 * 1000
+    return Date.now() + ms(`${this.settings.get().cacheTtlHours}h`)
   }
 
   private streamExpiresAt(streamUrl: string | null): number {
-    const configured = Date.now() + this.settings.get().streamCacheTtlMinutes * 60 * 1000
+    const configured = Date.now() + ms(`${this.settings.get().streamCacheTtlMinutes}m`)
     if (!streamUrl) return configured
     const fromUrl = parseStreamExpiryMs(streamUrl)
     if (fromUrl === null) return configured

@@ -1,4 +1,5 @@
 import type { TrackCandidate } from "../../shared/types/music"
+import { normalize, tokenList } from "../../shared/utils/string"
 import { searchCatalog } from "../catalog/catalog-search"
 import { enrichTrackCandidate } from "../metadata/catalog-enrichment"
 import { buildScsearchArg, buildYtsearchArg } from "../music/query-builders"
@@ -31,28 +32,20 @@ function withTimeout<T>(task: Promise<T>, ms: number, message: string): Promise<
   })
 }
 
-function normalizeText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[[\](){}'".,!?/\\|`~@#$%^&*+=:;<>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
 function similarity(left: string, right: string): number {
-  const a = normalizeText(left)
-  const b = normalizeText(right)
+  const a = normalize(left)
+  const b = normalize(right)
   if (!a || !b) return 0
   if (a === b) return 1
   if (a.includes(b) || b.includes(a)) return 0.9
-  const leftTokens = new Set(a.split(" ").filter(Boolean))
-  const rightTokens = new Set(b.split(" ").filter(Boolean))
-  if (!leftTokens.size || !rightTokens.size) return 0
+  const leftTokens = tokenList(a)
+  const rightTokens = new Set(tokenList(b))
+  if (!leftTokens.length || !rightTokens.size) return 0
   let n = 0
   for (const tok of leftTokens) {
     if (rightTokens.has(tok)) n += 1
   }
-  return n / Math.max(leftTokens.size, rightTokens.size)
+  return n / Math.max(leftTokens.length, rightTokens.size)
 }
 
 function durationSimilarity(expected: number | undefined, actualSec: number | undefined): number {
