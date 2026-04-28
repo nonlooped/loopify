@@ -1,5 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
+  ArrowDown,
+  ArrowUp,
   ArrowUpDown,
   CheckCircle2,
   Download,
@@ -94,9 +96,10 @@ export function Workspace({
   const [sortField, setSortField] = useState<PlaylistSortField>("position")
   const [sortDirection, setSortDirection] = useState<PlaylistSortDirection>("asc")
   const [trackDropPlaylistId, setTrackDropPlaylistId] = useState<string | null>(null)
+  const [isTrackDropOverOpen, setIsTrackDropOverOpen] = useState(false)
 
   const handlePlaylistCardDragOver = useCallback(
-    (e: React.DragEvent<HTMLButtonElement>, playlistId: string) => {
+    (e: React.DragEvent<HTMLDivElement>, playlistId: string) => {
       if (!onAddTrackToPlaylist) return
       if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
       e.preventDefault()
@@ -107,7 +110,7 @@ export function Workspace({
   )
 
   const handlePlaylistCardDragLeave = useCallback(
-    (e: React.DragEvent<HTMLButtonElement>, playlistId: string) => {
+    (e: React.DragEvent<HTMLDivElement>, playlistId: string) => {
       if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
       setTrackDropPlaylistId((id) => (id === playlistId ? null : id))
     },
@@ -115,7 +118,7 @@ export function Workspace({
   )
 
   const handlePlaylistCardDrop = useCallback(
-    (e: React.DragEvent<HTMLButtonElement>, playlistId: string) => {
+    (e: React.DragEvent<HTMLDivElement>, playlistId: string) => {
       if (!onAddTrackToPlaylist) return
       const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
       if (!raw) return
@@ -129,6 +132,39 @@ export function Workspace({
       }
     },
     [onAddTrackToPlaylist]
+  )
+
+  const handleOpenPlaylistDragOver = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!onAddTrackToPlaylist || !activePlaylist) return
+      if (!e.dataTransfer.types.includes(DRAG_MIME_TYPES.TRACK)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+      setIsTrackDropOverOpen(true)
+    },
+    [onAddTrackToPlaylist, activePlaylist]
+  )
+
+  const handleOpenPlaylistDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    setIsTrackDropOverOpen(false)
+  }, [])
+
+  const handleOpenPlaylistDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!onAddTrackToPlaylist || !activePlaylist) return
+      const raw = e.dataTransfer.getData(DRAG_MIME_TYPES.TRACK)
+      if (!raw) return
+      e.preventDefault()
+      setIsTrackDropOverOpen(false)
+      try {
+        const track = JSON.parse(raw) as Track
+        onAddTrackToPlaylist(activePlaylist.id, track)
+      } catch (err) {
+        console.error("Failed to parse dropped track payload", err)
+      }
+    },
+    [onAddTrackToPlaylist, activePlaylist]
   )
 
   const openPlaylist = useCallback(
@@ -226,27 +262,30 @@ export function Workspace({
           ) : (
             <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {playlists.map((p) => (
-                <button
-                  type="button"
+                // biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop target container for track-to-playlist drops
+                <div
                   key={p.id}
-                  onClick={() => openPlaylist(p.id)}
                   onDragOver={(e) => handlePlaylistCardDragOver(e, p.id)}
                   onDragLeave={(e) => handlePlaylistCardDragLeave(e, p.id)}
                   onDrop={(e) => handlePlaylistCardDrop(e, p.id)}
                   className={cn(
-                    "group relative aspect-square cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-surface text-left shadow-md transition-transform duration-ui ease-out-quart hover:scale-[1.04] hover:border-border hover:shadow-lg active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100",
+                    "group relative aspect-square overflow-hidden rounded-2xl border border-transparent bg-surface shadow-md transition-transform duration-ui ease-out-quart hover:scale-[1.04] hover:border-border hover:shadow-lg active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100",
                     trackDropPlaylistId === p.id &&
                       "scale-[1.04] border-accent shadow-lg ring-2 ring-accent/60 ring-offset-2 ring-offset-canvas"
                   )}
                 >
+                  <button
+                    type="button"
+                    onClick={() => openPlaylist(p.id)}
+                    aria-label={`Open ${p.name}`}
+                    className="absolute inset-0 z-[1] cursor-pointer"
+                  />
                   <div className="absolute right-3 top-3 z-20 flex items-center gap-1 opacity-100 transition-opacity duration-ui ease-out-quart sm:right-4 sm:top-4 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 motion-reduce:transition-none motion-reduce:opacity-100">
                     <IconButton
-                      type="button"
                       size="sm"
                       title="Play playlist"
                       className="h-10 w-10 rounded-full bg-accent text-on-accent hover:bg-accent-bright"
-                      onClick={(e) => {
-                        e.stopPropagation()
+                      onClick={() => {
                         onPlayPlaylist?.(p)
                       }}
                     >
@@ -254,12 +293,10 @@ export function Workspace({
                     </IconButton>
                     {onRequestRenamePlaylist && !isSystemPlaylistId(p.id) && (
                       <IconButton
-                        type="button"
                         size="sm"
                         title="Rename playlist"
                         className="h-10 w-10 rounded-full bg-canvas/90 text-foreground shadow-md backdrop-blur-sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
+                        onClick={() => {
                           onRequestRenamePlaylist(p)
                         }}
                       >
@@ -268,12 +305,10 @@ export function Workspace({
                     )}
                     {onRequestDeletePlaylist && !isSystemPlaylistId(p.id) && (
                       <IconButton
-                        type="button"
                         size="sm"
                         title="Delete playlist"
                         className="h-10 w-10 rounded-full bg-canvas/90 text-foreground shadow-md backdrop-blur-sm hover:text-danger"
-                        onClick={(e) => {
-                          e.stopPropagation()
+                        onClick={() => {
                           onRequestDeletePlaylist(p)
                         }}
                       >
@@ -290,7 +325,7 @@ export function Workspace({
                       transitionName={playlistArtworkTransitionName(p.id)}
                     />
                   </div>
-                  <div className="absolute inset-x-0 top-0 z-10 p-5 text-left">
+                  <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-5 text-left">
                     <h3
                       className="type-title text-foreground drop-shadow-sm sm:text-[1.25rem]"
                       style={{ viewTransitionName: playlistNameTransitionName(p.id) }}
@@ -298,13 +333,13 @@ export function Workspace({
                       {p.name}
                     </h3>
                     <p
-                      className="type-label mt-1 text-foreground/78"
+                      className="type-label mt-1 text-foreground/80"
                       style={{ viewTransitionName: playlistCountTransitionName(p.id) }}
                     >
                       {formatPlaylistMeta(p.tracks?.length || 0, p.totalDurationMs)}
                     </p>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -416,86 +451,98 @@ export function Workspace({
             </div>
           </div>
 
-          {activePlaylist.tracks && activePlaylist.tracks.length > 0 ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <PlaylistSortControl
-                field={sortField}
-                direction={sortDirection}
-                onFieldChange={setSortField}
-                onDirectionChange={setSortDirection}
-              />
-              <div className="min-h-0 flex-1">
-                <PlaylistTracksList
-                  playlistId={activePlaylist.id}
-                  tracks={activeTracks}
-                  onPlayTrack={onPlayTrack}
-                  onRemoveTrackFromPlaylist={
-                    isSystemPlaylistId(activePlaylist.id) ? undefined : onRemoveTrackFromPlaylist
-                  }
-                  onMovePlaylistTrack={canManualReorder ? onMovePlaylistTrack : undefined}
-                  onEnqueuePlaylistTrack={onEnqueuePlaylistTrack}
-                  onToggleLikeTrack={onToggleLikeTrack}
-                  onDownloadTrack={onDownloadTrack}
-                  onRemoveTrackDownload={onRemoveTrackDownload}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop target container for track-to-playlist drops */}
+          <div
+            onDragOver={handleOpenPlaylistDragOver}
+            onDragLeave={handleOpenPlaylistDragLeave}
+            onDrop={handleOpenPlaylistDrop}
+            className={cn(
+              "transition-colors duration-ui ease-out-quart",
+              isTrackDropOverOpen &&
+                "rounded-2xl ring-2 ring-accent/60 ring-offset-2 ring-offset-canvas bg-accent/[0.03]"
+            )}
+          >
+            {activePlaylist.tracks && activePlaylist.tracks.length > 0 ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <PlaylistSortControl
+                  field={sortField}
+                  direction={sortDirection}
+                  onFieldChange={setSortField}
+                  onDirectionChange={setSortDirection}
                 />
+                <div className="min-h-0 flex-1">
+                  <PlaylistTracksList
+                    playlistId={activePlaylist.id}
+                    tracks={activeTracks}
+                    onPlayTrack={onPlayTrack}
+                    onRemoveTrackFromPlaylist={
+                      isSystemPlaylistId(activePlaylist.id) ? undefined : onRemoveTrackFromPlaylist
+                    }
+                    onMovePlaylistTrack={canManualReorder ? onMovePlaylistTrack : undefined}
+                    onEnqueuePlaylistTrack={onEnqueuePlaylistTrack}
+                    onToggleLikeTrack={onToggleLikeTrack}
+                    onDownloadTrack={onDownloadTrack}
+                    onRemoveTrackDownload={onRemoveTrackDownload}
+                  />
+                </div>
               </div>
-            </div>
-          ) : (
-            (() => {
-              const isSystem = isSystemPlaylistId(activePlaylist.id)
-              const emptyConfig = isSystem
-                ? activePlaylist.id === LIKED_SONGS_PLAYLIST_ID
-                  ? {
-                      icon: <Heart className="h-6 w-6" aria-hidden strokeWidth={1.6} />,
-                      eyebrow: "Liked Songs",
-                      title: "No liked songs yet",
-                      description: `Tap the heart on a track while it plays to save it here, or use Search to find something new. ${searchShortcutProse()}`,
-                    }
+            ) : (
+              (() => {
+                const isSystem = isSystemPlaylistId(activePlaylist.id)
+                const emptyConfig = isSystem
+                  ? activePlaylist.id === LIKED_SONGS_PLAYLIST_ID
+                    ? {
+                        icon: <Heart className="h-6 w-6" aria-hidden strokeWidth={1.6} />,
+                        eyebrow: "Liked Songs",
+                        title: "No liked songs yet",
+                        description: `Tap the heart on a track while it plays to save it here, or use Search to find something new. ${searchShortcutProse()}`,
+                      }
+                    : {
+                        icon: <HardDrive className="h-6 w-6" aria-hidden strokeWidth={1.6} />,
+                        eyebrow: "Offline songs",
+                        title: "No offline tracks yet",
+                        description: `Songs you download from other playlists or the queue will appear here for offline playback. ${searchShortcutProse()}`,
+                      }
                   : {
-                      icon: <HardDrive className="h-6 w-6" aria-hidden strokeWidth={1.6} />,
-                      eyebrow: "Offline songs",
-                      title: "No offline tracks yet",
-                      description: `Songs you download from other playlists or the queue will appear here for offline playback. ${searchShortcutProse()}`,
+                      icon: <ListPlus className="h-6 w-6" aria-hidden strokeWidth={1.6} />,
+                      eyebrow: "Playlist",
+                      title: "This playlist is ready for its first run",
+                      description: `Import a playlist URL to fill it in one move, or use Search to play and queue tracks before you decide what belongs here. ${searchShortcutProse()}`,
                     }
-                : {
-                    icon: <ListPlus className="h-6 w-6" aria-hidden strokeWidth={1.6} />,
-                    eyebrow: "Playlist",
-                    title: "This playlist is ready for its first run",
-                    description: `Import a playlist URL to fill it in one move, or use Search to play and queue tracks before you decide what belongs here. ${searchShortcutProse()}`,
-                  }
-              return (
-                <EmptyState
-                  className="mx-auto mt-6 max-w-2xl sm:mt-10"
-                  icon={emptyConfig.icon}
-                  eyebrow={emptyConfig.eyebrow}
-                  title={emptyConfig.title}
-                  description={emptyConfig.description}
-                  actions={
-                    <>
-                      {onOpenImport && !isSystem && (
-                        <Button type="button" size="lg" className="gap-2" onClick={onOpenImport}>
-                          <Download className="h-4 w-4" aria-hidden />
-                          Import
-                        </Button>
-                      )}
-                      {onOpenSearch && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="lg"
-                          className="gap-2 border-border"
-                          onClick={onOpenSearch}
-                        >
-                          <Search className="h-4 w-4" aria-hidden />
-                          Search
-                        </Button>
-                      )}
-                    </>
-                  }
-                />
-              )
-            })()
-          )}
+                return (
+                  <EmptyState
+                    className="mx-auto mt-6 max-w-2xl sm:mt-10"
+                    icon={emptyConfig.icon}
+                    eyebrow={emptyConfig.eyebrow}
+                    title={emptyConfig.title}
+                    description={emptyConfig.description}
+                    actions={
+                      <>
+                        {onOpenImport && !isSystem && (
+                          <Button type="button" size="lg" className="gap-2" onClick={onOpenImport}>
+                            <Download className="h-4 w-4" aria-hidden />
+                            Import
+                          </Button>
+                        )}
+                        {onOpenSearch && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="lg"
+                            className="gap-2 border-border"
+                            onClick={onOpenSearch}
+                          >
+                            <Search className="h-4 w-4" aria-hidden />
+                            Search
+                          </Button>
+                        )}
+                      </>
+                    }
+                  />
+                )
+              })()
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -816,10 +863,32 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
     () => onRemoveTrackDownload?.(track),
     [onRemoveTrackDownload, track]
   )
+  const onMoveUp = useCallback(() => {
+    if (!onMoveEntry || index <= 0) return
+    onMoveEntry(entryId, index - 1)
+  }, [onMoveEntry, entryId, index])
+  const onMoveDown = useCallback(() => {
+    if (!onMoveEntry || index >= trackCount - 1) return
+    onMoveEntry(entryId, index + 1)
+  }, [onMoveEntry, entryId, index, trackCount])
   const durationLabel = useMemo(() => formatTrackDuration(track.durationMs), [track.durationMs])
   const isLiked = Boolean(track.likedAt)
   const isDownloaded = track.downloadStatus === "downloaded"
   const isDownloadBusy = track.downloadStatus === "queued" || track.downloadStatus === "downloading"
+
+  const handleRowKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!canReorder) return
+      if (e.altKey && e.key === "ArrowUp") {
+        e.preventDefault()
+        onMoveUp()
+      } else if (e.altKey && e.key === "ArrowDown") {
+        e.preventDefault()
+        onMoveDown()
+      }
+    },
+    [canReorder, onMoveUp, onMoveDown]
+  )
 
   return (
     <li
@@ -833,6 +902,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
       onDragOver={canReorder ? onRowDragOver : undefined}
       onDragLeave={canReorder ? onRowDragLeave : undefined}
       onDrop={canReorder ? onRowDrop : undefined}
+      onKeyDown={handleRowKeyDown}
     >
       {canReorder && (
         <IconButton
@@ -925,6 +995,36 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
             >
               <ListPlus className="h-4 w-4" />
             </IconButton>
+          )}
+          {canReorder && (
+            <>
+              <IconButton
+                type="button"
+                size="sm"
+                title="Move up (Alt+Up)"
+                aria-label="Move track up"
+                disabled={index <= 0}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onMoveUp()
+                }}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </IconButton>
+              <IconButton
+                type="button"
+                size="sm"
+                title="Move down (Alt+Down)"
+                aria-label="Move track down"
+                disabled={index >= trackCount - 1}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onMoveDown()
+                }}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </IconButton>
+            </>
           )}
           {onRemoveEntry && (
             <button

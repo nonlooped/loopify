@@ -19,6 +19,7 @@ import { createPortal } from "react-dom"
 import type { PlayerState, RepeatMode, Track } from "src/shared/types/music"
 import { IconButton } from "@/components/IconButton"
 import { Slider } from "@/components/Slider"
+import { useFocusTrap } from "@/hooks/useFocusTrap"
 import { cn } from "@/lib/cn"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { modArrowHint, playPauseHint } from "@/lib/keyboard-shortcuts"
@@ -73,6 +74,8 @@ export function FloatingIsland({
 }: FloatingIslandProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [expandedMode, setExpandedMode] = useState<"artwork" | "lyrics">("artwork")
+  const { containerRef: expandedPanelRef, handleKeyDown: onExpandedKeyDown } =
+    useFocusTrap(isExpanded)
 
   const isPlaying = playerState?.status === "playing"
   const title = playerState?.title || "Not Playing"
@@ -135,8 +138,13 @@ export function FloatingIsland({
 
           <div className="pointer-events-none absolute inset-x-3 inset-y-3 sm:inset-x-4 sm:inset-y-4 md:inset-y-5">
             <div
+              ref={expandedPanelRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Now playing"
+              onKeyDown={onExpandedKeyDown}
               className={cn(
-                "ol-now-playing-panel pointer-events-auto absolute inset-0 overflow-hidden rounded-[2rem] border border-white/10 bg-surface/94 shadow-island backdrop-blur-3xl sm:rounded-[2.5rem]",
+                "ol-now-playing-panel pointer-events-auto absolute inset-0 overflow-hidden rounded-[2rem] border border-border bg-surface/94 shadow-island backdrop-blur-3xl sm:rounded-[2.5rem]",
                 isExpanded ? "ol-open" : "pointer-events-none"
               )}
             >
@@ -299,7 +307,7 @@ export function FloatingIsland({
                   </div>
                 </div>
 
-                <div className="relative flex w-full justify-center border-t border-white/10 pt-3 sm:pt-4">
+                <div className="relative flex w-full justify-center border-t border-border pt-3 sm:pt-4">
                   <div className="flex w-full max-w-[44rem] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="flex min-w-0 items-center gap-3 sm:w-44">
                       <Volume2 className="h-4 w-4 shrink-0 text-muted" />

@@ -19,7 +19,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             "bg-accent text-on-accent hover:bg-accent-bright active:bg-accent",
           variant === "ghost" && "bg-transparent text-foreground hover:bg-white/5",
           variant === "outline" &&
-            "bg-transparent text-foreground border border-white/10 hover:bg-white/5",
+            "bg-transparent text-foreground border border-border hover:bg-white/5",
           variant === "danger" && "bg-danger text-on-accent hover:bg-danger/90 active:bg-danger",
           size === "sm" && "h-8 rounded px-3 text-[0.8125rem]",
           size === "md" && "h-10 rounded-md px-4 text-[0.9375rem]",

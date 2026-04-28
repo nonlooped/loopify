@@ -8,7 +8,7 @@
   --color-border: oklch(1 0 0 / 0.1);
   --color-foreground: oklch(0.95 0 0);
   --color-muted: oklch(0.65 0 0);
-  --color-subtle: oklch(0.5 0 0);
+  --color-subtle: oklch(0.58 0 0);
   --color-accent: oklch(0.55 0.12 260);
   --color-accent-bright: oklch(0.65 0.12 260);
   --color-danger: oklch(0.6 0.15 25);

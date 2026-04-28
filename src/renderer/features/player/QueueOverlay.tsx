@@ -171,7 +171,7 @@ function QueueOverlayImpl({
                     description={`Use Search (${formatModShortcut("K")}) to start playback or stage a few tracks for later.`}
                   />
                 ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.035] text-subtle">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-white/[0.035] text-subtle">
                     <ListMusic className="h-5 w-5 shrink-0" />
                   </div>
                 )}
