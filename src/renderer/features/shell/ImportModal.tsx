@@ -120,7 +120,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete }: ImportModalPr
     <div
       ref={backdropRef}
       onTransitionEnd={onBackdropTransitionEnd}
-      className={`ol-backdrop fixed inset-0 z-100 flex items-center justify-center bg-canvas/80 backdrop-blur-md ${showOverlay ? "ol-open" : ""}`}
+      className={`ol-backdrop fixed top-9 inset-x-0 bottom-0 z-100 flex items-center justify-center bg-canvas/80 ${showOverlay ? "ol-open" : ""}`}
     >
       <div>
         <ModalFrame

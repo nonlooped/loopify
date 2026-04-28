@@ -25,6 +25,7 @@ import { Workspace } from "../../features/library/Workspace"
 import { FloatingIsland } from "../../features/player/FloatingIsland"
 import { NavRail } from "../../features/shell/NavRail"
 import type { PlaylistActionState } from "../../features/shell/PlaylistActionModal"
+import { TitleBar } from "../../features/shell/TitleBar"
 
 const CommandPalette = lazy(() =>
   import("../../features/shell/CommandPalette").then((m) => ({ default: m.CommandPalette }))
@@ -985,108 +986,115 @@ function AppTree({
         onToggleQueue={onToggleQueue}
       />
 
-      <div className="@container/shell relative flex min-h-0 min-w-0 flex-1 flex-row">
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <Workspace
-            activePlaylist={activePlaylist}
-            playlists={playlists}
-            onPlayTrack={handlePlayTrack}
-            onSelectPlaylist={selectPlaylistWithTransition}
-            onPlayPlaylist={handlePlayPlaylist}
-            onEnqueuePlaylist={handleEnqueuePlaylist}
-            onRequestRenamePlaylist={openRenamePlaylist}
-            onRequestDeletePlaylist={openDeletePlaylist}
-            onRemoveTrackFromPlaylist={handleRemoveFromPlaylist}
-            onMovePlaylistTrack={handleMovePlaylistTrack}
-            onEnqueuePlaylistTrack={handleEnqueuePlaylistTrack}
-            onToggleLikeTrack={handleToggleLikeTrack}
-            onDownloadTrack={handleDownloadTrack}
-            onRemoveTrackDownload={handleRemoveTrackDownload}
-            onDownloadPlaylist={handleDownloadPlaylist}
-            onAddTrackToPlaylist={handleAddTrackToPlaylist}
-            onOpenSearch={() => setIsSearchOpen(true)}
-            onOpenImport={() => setIsImportOpen(true)}
-            onCreatePlaylist={handleCreatePlaylist}
-          />
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <TitleBar
+          playerState={playerState}
+          currentArtwork={currentArtwork ?? null}
+          currentArtist={currentArtist}
+        />
+        <div className="@container/shell relative flex min-h-0 min-w-0 flex-1 flex-row">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            <Workspace
+              activePlaylist={activePlaylist}
+              playlists={playlists}
+              onPlayTrack={handlePlayTrack}
+              onSelectPlaylist={selectPlaylistWithTransition}
+              onPlayPlaylist={handlePlayPlaylist}
+              onEnqueuePlaylist={handleEnqueuePlaylist}
+              onRequestRenamePlaylist={openRenamePlaylist}
+              onRequestDeletePlaylist={openDeletePlaylist}
+              onRemoveTrackFromPlaylist={handleRemoveFromPlaylist}
+              onMovePlaylistTrack={handleMovePlaylistTrack}
+              onEnqueuePlaylistTrack={handleEnqueuePlaylistTrack}
+              onToggleLikeTrack={handleToggleLikeTrack}
+              onDownloadTrack={handleDownloadTrack}
+              onRemoveTrackDownload={handleRemoveTrackDownload}
+              onDownloadPlaylist={handleDownloadPlaylist}
+              onAddTrackToPlaylist={handleAddTrackToPlaylist}
+              onOpenSearch={() => setIsSearchOpen(true)}
+              onOpenImport={() => setIsImportOpen(true)}
+              onCreatePlaylist={handleCreatePlaylist}
+            />
 
-          {shouldRenderFloatingPlayer && (
-            <div
-              onTransitionEnd={onFloatingPlayerTransitionEnd}
-              className={cn(
-                "relative shrink-0 z-30 transition-[opacity,transform] duration-modal ease-out-quart motion-reduce:transition-none",
-                showFloatingPlayer
-                  ? "opacity-100 translate-y-0"
-                  : "opacity-0 translate-y-4 pointer-events-none"
-              )}
-            >
-              <FloatingIsland
-                playerState={playerState}
-                currentTrack={currentTrack}
-                currentArtwork={currentArtwork ?? ""}
-                currentArtist={currentArtist}
-                onPlayPause={handlePlayPause}
-                onNext={handleNext}
-                onPrevious={handlePrevious}
-                onSeek={handleSeek}
-                onVolumeChange={handleVolumeChange}
-                hasNext={hasNext}
-                hasPrevious={hasPrevious}
-                isQueueOpen={isQueueOpen}
-                onToggleQueue={onToggleQueue}
-                onShuffleQueue={() => void handleShuffleQueue()}
-                canShuffleQueue={queue.length >= 2}
-                onCycleRepeat={handleCycleRepeat}
-                repeatMode={playerState?.repeatMode ?? "off"}
-                onToggleCurrentLike={handleToggleCurrentLike}
-                onDownloadCurrent={handleDownloadCurrent}
-                onRemoveCurrentDownload={handleRemoveCurrentDownload}
-              />
-            </div>
-          )}
+            {shouldRenderFloatingPlayer && (
+              <div
+                onTransitionEnd={onFloatingPlayerTransitionEnd}
+                className={cn(
+                  "relative shrink-0 z-30 transition-[opacity,transform] duration-modal ease-out-quart motion-reduce:transition-none",
+                  showFloatingPlayer
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-4 pointer-events-none"
+                )}
+              >
+                <FloatingIsland
+                  playerState={playerState}
+                  currentTrack={currentTrack}
+                  currentArtwork={currentArtwork ?? ""}
+                  currentArtist={currentArtist}
+                  onPlayPause={handlePlayPause}
+                  onNext={handleNext}
+                  onPrevious={handlePrevious}
+                  onSeek={handleSeek}
+                  onVolumeChange={handleVolumeChange}
+                  hasNext={hasNext}
+                  hasPrevious={hasPrevious}
+                  isQueueOpen={isQueueOpen}
+                  onToggleQueue={onToggleQueue}
+                  onShuffleQueue={() => void handleShuffleQueue()}
+                  canShuffleQueue={queue.length >= 2}
+                  onCycleRepeat={handleCycleRepeat}
+                  repeatMode={playerState?.repeatMode ?? "off"}
+                  onToggleCurrentLike={handleToggleCurrentLike}
+                  onDownloadCurrent={handleDownloadCurrent}
+                  onRemoveCurrentDownload={handleRemoveCurrentDownload}
+                />
+              </div>
+            )}
+          </div>
+
+          <Suspense fallback={null}>
+            <QueueOverlay
+              compact={isCompactShell}
+              isOpen={isQueueOpen}
+              queue={queue}
+              currentQueueItemId={playerState?.queueItemId ?? null}
+              onPlay={queueOnPlay}
+              onRemove={queueOnRemove}
+              onClear={queueOnClear}
+              onToggle={onToggleQueue}
+              onToggleLikeTrack={handleToggleLikeTrack}
+              onDownloadTrack={handleDownloadTrack}
+              onRemoveTrackDownload={handleRemoveTrackDownload}
+              confirmClear={queueClearConfirming}
+              onSetConfirmClear={setQueueClearConfirming}
+            />
+          </Suspense>
         </div>
 
         <Suspense fallback={null}>
-          <QueueOverlay
-            compact={isCompactShell}
-            isOpen={isQueueOpen}
-            queue={queue}
-            currentQueueItemId={playerState?.queueItemId ?? null}
-            onPlay={queueOnPlay}
-            onRemove={queueOnRemove}
-            onClear={queueOnClear}
-            onToggle={onToggleQueue}
-            onToggleLikeTrack={handleToggleLikeTrack}
-            onDownloadTrack={handleDownloadTrack}
-            onRemoveTrackDownload={handleRemoveTrackDownload}
-            confirmClear={queueClearConfirming}
-            onSetConfirmClear={setQueueClearConfirming}
+          <CommandPalette
+            isOpen={isSearchOpen}
+            onClose={() => setIsSearchOpen(false)}
+            onPlayTrack={handlePlayTrack}
+            onEnqueueTrack={handleEnqueueTrack}
+            onLikeTrack={handleLikeCandidate}
+            onDownloadTrack={handleDownloadCandidate}
+          />
+          <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+          <ImportModal
+            isOpen={isImportOpen}
+            onClose={() => setIsImportOpen(false)}
+            onImportComplete={refreshPlaylists}
+          />
+          <PlaylistActionModal
+            state={playlistAction}
+            onDismiss={() => setPlaylistAction(null)}
+            onSubmitCreate={submitPlaylistCreate}
+            onSubmitRename={submitPlaylistRename}
+            onSubmitDelete={submitPlaylistDelete}
           />
         </Suspense>
       </div>
-
-      <Suspense fallback={null}>
-        <CommandPalette
-          isOpen={isSearchOpen}
-          onClose={() => setIsSearchOpen(false)}
-          onPlayTrack={handlePlayTrack}
-          onEnqueueTrack={handleEnqueueTrack}
-          onLikeTrack={handleLikeCandidate}
-          onDownloadTrack={handleDownloadCandidate}
-        />
-        <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
-        <ImportModal
-          isOpen={isImportOpen}
-          onClose={() => setIsImportOpen(false)}
-          onImportComplete={refreshPlaylists}
-        />
-        <PlaylistActionModal
-          state={playlistAction}
-          onDismiss={() => setPlaylistAction(null)}
-          onSubmitCreate={submitPlaylistCreate}
-          onSubmitRename={submitPlaylistRename}
-          onSubmitDelete={submitPlaylistDelete}
-        />
-      </Suspense>
     </div>
   )
 }

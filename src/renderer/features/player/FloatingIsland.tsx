@@ -126,11 +126,16 @@ export function FloatingIsland({
   return (
     <div className="relative w-full">
       {createPortal(
-        <div className={cn("fixed inset-0 z-50", !isExpanded && "pointer-events-none")}>
+        <div
+          className={cn(
+            "fixed top-9 inset-x-0 bottom-0 z-50",
+            !isExpanded && "pointer-events-none"
+          )}
+        >
           <div
             className={cn(
               "pointer-events-none absolute inset-0 bg-canvas/0 opacity-0 transition-opacity duration-modal ease-out-quart",
-              isExpanded && "pointer-events-auto bg-canvas/28 opacity-100 backdrop-blur-[2px]"
+              isExpanded && "pointer-events-auto bg-canvas/60 opacity-100"
             )}
             aria-hidden={!isExpanded}
             onClick={() => setIsExpanded(false)}
@@ -144,7 +149,7 @@ export function FloatingIsland({
               aria-label="Now playing"
               onKeyDown={onExpandedKeyDown}
               className={cn(
-                "ol-now-playing-panel pointer-events-auto absolute inset-0 overflow-hidden rounded-[2rem] border border-border bg-surface/94 shadow-island backdrop-blur-3xl sm:rounded-[2.5rem]",
+                "ol-now-playing-panel pointer-events-auto absolute inset-0 overflow-hidden rounded-[2rem] border border-border bg-surface shadow-island sm:rounded-[2.5rem]",
                 isExpanded ? "ol-open" : "pointer-events-none"
               )}
             >
@@ -357,7 +362,7 @@ export function FloatingIsland({
       <div className="relative w-full px-3 pb-4 sm:px-4 sm:pb-6 md:pb-8 flex justify-center">
         <div
           className={cn(
-            "ol-now-playing-dock pointer-events-auto group relative flex w-full min-w-0 max-w-full flex-col gap-4 rounded-2xl border border-white/8 bg-surface/95 p-3 shadow-island backdrop-blur-2xl hover:border-white/14 hover:bg-white/[0.075] xl:max-w-6xl xl:flex-row xl:items-center xl:gap-6",
+            "ol-now-playing-dock pointer-events-auto group relative flex w-full min-w-0 max-w-full flex-col gap-4 rounded-2xl border border-white/8 bg-surface p-3 shadow-island hover:border-white/14 xl:max-w-6xl xl:flex-row xl:items-center xl:gap-6",
             isExpanded && "pointer-events-none is-hidden"
           )}
         >

@@ -31,7 +31,7 @@ export function AppErrorBanner({ message, onDismiss }: AppErrorBannerProps) {
       role="alert"
       onTransitionEnd={onBannerTransitionEnd}
       className={cn(
-        "ol-error-banner type-body-sm pointer-events-auto fixed top-4 left-1/2 z-200 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-raised px-4 py-3 text-foreground shadow-panel backdrop-blur-3xl",
+        "ol-error-banner type-body-sm pointer-events-auto fixed top-4 left-1/2 z-200 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-raised px-4 py-3 text-foreground shadow-panel",
         showOverlay && "ol-open"
       )}
     >

@@ -31,7 +31,7 @@ export function UpdateBanner({ status, onDismiss }: UpdateBannerProps) {
   return (
     <div
       className={cn(
-        "fixed bottom-6 right-6 z-200 flex w-[24rem] max-w-[calc(100vw-3rem)] items-center gap-3.5 rounded-2xl border border-border bg-surface/80 p-3 pr-2 shadow-island backdrop-blur-3xl transition-[opacity,transform] duration-modal ease-out-quart motion-reduce:transition-none",
+        "fixed bottom-6 right-6 z-200 flex w-[24rem] max-w-[calc(100vw-3rem)] items-center gap-3.5 rounded-2xl border border-border bg-surface p-3 pr-2 shadow-island transition-[opacity,transform] duration-modal ease-out-quart motion-reduce:transition-none",
         showOverlay ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6 pointer-events-none"
       )}
       role="status"
@@ -64,7 +64,7 @@ export function UpdateBanner({ status, onDismiss }: UpdateBannerProps) {
           <button
             type="button"
             onClick={handleAction}
-            className="type-body-sm cursor-pointer rounded-full bg-accent px-3.5 py-1.5 font-medium text-on-accent transition-all duration-ui ease-out-quart hover:bg-accent-bright hover:shadow-md active:scale-95"
+            className="type-body-sm cursor-pointer rounded-full bg-accent px-3.5 py-1.5 font-medium text-on-accent transition duration-ui ease-out-quart hover:bg-accent-bright hover:shadow-md active:scale-95"
           >
             {status?.phase === "available" ? (
               <span className="flex items-center gap-1.5">

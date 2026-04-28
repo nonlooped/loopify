@@ -20,8 +20,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [activeTab, setActiveTab] = useState<
+    "general" | "features" | "shortcuts" | "advanced" | "info"
+  >("general")
   const backdropRef = useRef<HTMLDivElement>(null)
   const { shouldRender, showOverlay, onBackdropTransitionEnd } = useOverlayPresence(isOpen)
 
@@ -42,8 +43,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setUpdateStatus(null)
     setSaveMessage(null)
     setIsInstallingUpdate(false)
-    setShowAdvanced(false)
-    setShowShortcuts(false)
+    setActiveTab("general")
   }, [shouldRender])
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     <div
       ref={backdropRef}
       onTransitionEnd={onBackdropTransitionEnd}
-      className={`ol-backdrop fixed inset-0 z-100 flex items-center justify-center bg-canvas/80 px-3 py-3 backdrop-blur-md sm:px-4 sm:py-4 ${showOverlay ? "ol-open" : ""}`}
+      className={`ol-backdrop fixed top-9 inset-x-0 bottom-0 z-100 flex items-center justify-center bg-canvas/80 px-3 py-3 sm:px-4 sm:py-4 ${showOverlay ? "ol-open" : ""}`}
     >
       <div
         ref={focusRef}
@@ -169,118 +169,158 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between border-b border-border px-6 py-5 sm:px-8">
-              <h2 className="type-heading text-foreground">Settings</h2>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close settings"
-                title="Close settings"
-                className="cursor-pointer rounded-md p-2 text-muted transition-colors duration-ui ease-out-quart hover:bg-white/10 hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
+            <div>
+              <div className="flex items-center justify-between px-6 pt-5 sm:px-8">
+                <h2 className="type-heading text-foreground">Settings</h2>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close settings"
+                  title="Close settings"
+                  className="cursor-pointer rounded-md p-2 text-muted transition-colors duration-ui ease-out-quart hover:bg-white/10 hover:text-foreground"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="mt-4 flex gap-6 border-b border-border px-6 sm:px-8 overflow-x-auto no-scrollbar">
+                {(["General", "Features", "Shortcuts", "Advanced", "Info"] as const).map((tab) => {
+                  const id = tab.toLowerCase() as typeof activeTab
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setActiveTab(id)}
+                      className={`whitespace-nowrap border-b-2 px-1 pb-3 type-body-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                        activeTab === id
+                          ? "border-accent text-foreground"
+                          : "border-transparent text-muted hover:text-foreground hover:border-white/10"
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
-              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-6 sm:px-8">
-                <section className="space-y-4">
-                  <div>
-                    <p className="type-title m-0 text-foreground">Playback tools</p>
-                    <p className="type-meta mt-1 text-muted">
-                      Loopify uses local command-line tools for resolving and playback. Leave these
-                      as defaults unless the app cannot find them.
-                    </p>
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-10">
+                {activeTab === "general" && (
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <section className="space-y-8">
+                      <header>
+                        <h3 className="type-title text-foreground">System & Playback</h3>
+                        <p className="type-meta mt-1.5 text-muted max-w-2xl">
+                          Local command-line tools for media resolution and playback. Leave these as
+                          defaults unless the app cannot find them.
+                        </p>
+                      </header>
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
+                        <div>
+                          <label
+                            htmlFor="mpvPath"
+                            className="type-label mb-2 block text-foreground"
+                          >
+                            MPV path
+                          </label>
+                          <TextField
+                            id="mpvPath"
+                            name="mpvPath"
+                            defaultValue={settings.mpvPath}
+                            placeholder="/usr/bin/mpv"
+                            className="h-11"
+                          />
+                        </div>
+                        <div>
+                          <label
+                            htmlFor="ytdlpPath"
+                            className="type-label mb-2 block text-foreground"
+                          >
+                            yt-dlp path
+                          </label>
+                          <TextField
+                            id="ytdlpPath"
+                            name="ytdlpPath"
+                            defaultValue={settings.ytdlpPath}
+                            placeholder="/usr/bin/yt-dlp"
+                            className="h-11"
+                          />
+                        </div>
+                      </div>
+                    </section>
                   </div>
-                  <div>
-                    <label htmlFor="mpvPath" className="type-label mb-2 block text-subtle">
-                      MPV path
-                    </label>
-                    <TextField
-                      id="mpvPath"
-                      name="mpvPath"
-                      defaultValue={settings.mpvPath}
-                      placeholder="/usr/bin/mpv"
-                      className="h-11"
-                    />
+                )}
+
+                {activeTab === "features" && (
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <section className="space-y-8">
+                      <header>
+                        <h3 className="type-title text-foreground">Features & Integrations</h3>
+                        <p className="type-meta mt-1.5 text-muted max-w-2xl">
+                          Optional capabilities to enhance your library and social experience.
+                        </p>
+                      </header>
+                      <div className="flex flex-col">
+                        <label className="group flex cursor-pointer items-start justify-between gap-6 border-b border-border/40 pb-6">
+                          <div className="flex flex-col pr-8">
+                            <span className="type-body font-medium text-foreground transition-colors group-hover:text-white">
+                              Improve catalog metadata
+                            </span>
+                            <span className="type-meta mt-1 text-muted">
+                              Fill in missing artwork, artist, and title details from public catalog
+                              sources when matches are confident.
+                            </span>
+                          </div>
+                          <div className="mt-1 shrink-0">
+                            <input
+                              type="checkbox"
+                              name="metadataEnrichmentEnabled"
+                              defaultChecked={settings.metadataEnrichmentEnabled}
+                              className="h-5 w-5 rounded border-subtle bg-white/5 transition-colors checked:bg-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="group flex cursor-pointer items-start justify-between gap-6 pt-6">
+                          <div className="flex flex-col pr-8">
+                            <span className="type-body font-medium text-foreground transition-colors group-hover:text-white">
+                              Share now playing to Discord
+                            </span>
+                            <span className="type-meta mt-1 text-muted">
+                              Publish active playback to your Discord profile through Rich Presence
+                              while Loopify is open.
+                            </span>
+                          </div>
+                          <div className="mt-1 shrink-0">
+                            <input
+                              type="checkbox"
+                              name="discordPresenceEnabled"
+                              defaultChecked={settings.discordPresenceEnabled}
+                              className="h-5 w-5 rounded border-subtle bg-white/5 transition-colors checked:bg-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                            />
+                          </div>
+                        </label>
+                      </div>
+                    </section>
                   </div>
-                  <div>
-                    <label htmlFor="ytdlpPath" className="type-label mb-2 block text-subtle">
-                      yt-dlp path
-                    </label>
-                    <TextField
-                      id="ytdlpPath"
-                      name="ytdlpPath"
-                      defaultValue={settings.ytdlpPath}
-                      placeholder="/usr/bin/yt-dlp"
-                      className="h-11"
-                    />
-                  </div>
-                </section>
+                )}
 
-                <section className="rounded-xl border border-border bg-white/3 p-4">
-                  <label className="type-body-sm flex cursor-pointer items-start gap-3 text-foreground">
-                    <span className="mt-0.5">
-                      <input
-                        type="checkbox"
-                        name="metadataEnrichmentEnabled"
-                        defaultChecked={settings.metadataEnrichmentEnabled}
-                        className="h-4 w-4 rounded border-subtle"
-                      />
-                    </span>
-                    <span>
-                      <span className="block">Improve catalog metadata</span>
-                      <span className="type-meta mt-1 block text-muted">
-                        Fill in missing artwork, artist, and title details from public catalog
-                        sources when matches are confident.
-                      </span>
-                    </span>
-                  </label>
-                </section>
+                {activeTab === "advanced" && (
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <section className="space-y-8">
+                      <header>
+                        <h3 className="type-title text-foreground">Advanced Configuration</h3>
+                        <p className="type-meta mt-1.5 text-muted max-w-2xl">
+                          Match scores run from 0 to 1. Higher values avoid bad matches but may skip
+                          obscure tracks.
+                        </p>
+                      </header>
 
-                <section className="rounded-xl border border-border bg-white/3 p-4">
-                  <label className="type-body-sm flex cursor-pointer items-start gap-3 text-foreground">
-                    <span className="mt-0.5">
-                      <input
-                        type="checkbox"
-                        name="discordPresenceEnabled"
-                        defaultChecked={settings.discordPresenceEnabled}
-                        className="h-4 w-4 rounded border-subtle"
-                      />
-                    </span>
-                    <span>
-                      <span className="block">Share now playing to Discord</span>
-                      <span className="type-meta mt-1 block text-muted">
-                        Publish active playback to your Discord profile through Rich Presence while
-                        Loopify is open.
-                      </span>
-                    </span>
-                  </label>
-                </section>
-
-                <section className="space-y-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced((v) => !v)}
-                    className="cursor-pointer flex w-full items-center justify-between rounded-xl border border-border bg-white/3 px-4 py-3 text-left transition-colors duration-ui ease-out-quart hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                    aria-expanded={showAdvanced}
-                  >
-                    <span>
-                      <span className="type-body-sm block text-foreground">Advanced import</span>
-                      <span className="type-meta mt-1 block text-muted">
-                        Limits, cache timing, and match thresholds.
-                      </span>
-                    </span>
-                    <span className="type-meta text-subtle">{showAdvanced ? "Hide" : "Show"}</span>
-                  </button>
-
-                  {showAdvanced && (
-                    <div className="space-y-4 rounded-xl border border-border bg-canvas/35 p-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
                         <div>
                           <label
                             htmlFor="resolverTimeoutMs"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
                             Resolver timeout
                           </label>
@@ -293,12 +333,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             step={1000}
                             className="h-11"
                           />
-                          <p className="type-meta mt-1 text-subtle">Milliseconds.</p>
+                          <p className="type-meta mt-2 text-subtle">Milliseconds.</p>
                         </div>
                         <div>
                           <label
                             htmlFor="cacheTtlHours"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
                             Metadata cache
                           </label>
@@ -310,14 +350,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             min={1}
                             className="h-11"
                           />
-                          <p className="type-meta mt-1 text-subtle">Hours.</p>
+                          <p className="type-meta mt-2 text-subtle">Hours.</p>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
                         <div>
                           <label
                             htmlFor="streamCacheTtlMinutes"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
                             Stream cache
                           </label>
@@ -329,12 +368,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             min={5}
                             className="h-11"
                           />
-                          <p className="type-meta mt-1 text-subtle">Minutes.</p>
+                          <p className="type-meta mt-2 text-subtle">Minutes.</p>
                         </div>
                         <div>
                           <label
                             htmlFor="importMaxTracks"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
                             Max tracks
                           </label>
@@ -348,12 +387,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             className="h-11"
                           />
                         </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
                         <div>
                           <label
                             htmlFor="importMatchConcurrency"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
                             Import concurrency
                           </label>
@@ -370,7 +408,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <div>
                           <label
                             htmlFor="importProgressThrottle"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
                             Progress cadence
                           </label>
@@ -383,14 +421,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             className="h-11"
                           />
                         </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
                         <div>
                           <label
                             htmlFor="spotifyMatchScoreThreshold"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
-                            Spotify match
+                            Spotify match score
                           </label>
                           <TextField
                             id="spotifyMatchScoreThreshold"
@@ -406,9 +443,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <div>
                           <label
                             htmlFor="metadataMinScore"
-                            className="type-label mb-2 block text-subtle"
+                            className="type-label mb-2 block text-foreground"
                           >
-                            Catalog match
+                            Catalog match score
                           </label>
                           <TextField
                             id="metadataMinScore"
@@ -422,54 +459,86 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           />
                         </div>
                       </div>
-                      <p className="type-meta m-0 text-muted">
-                        Match scores run from 0 to 1. Higher values avoid bad matches but may skip
-                        obscure tracks.
-                      </p>
-                    </div>
-                  )}
-                </section>
+                    </section>
+                  </div>
+                )}
 
-                <section className="border-t border-border pt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowShortcuts((v) => !v)}
-                    className="cursor-pointer flex w-full items-center justify-between rounded-xl px-1 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                    aria-expanded={showShortcuts}
-                  >
-                    <span className="type-label text-subtle">Keyboard shortcuts</span>
-                    <span className="type-meta text-subtle">{showShortcuts ? "Hide" : "Show"}</span>
-                  </button>
-                  {showShortcuts && (
-                    <ul className="m-0 mt-3 max-h-64 list-none space-y-2 overflow-y-auto p-0 pr-1">
-                      {KEYBOARD_SHORTCUTS_HELP.map((row) => (
-                        <li
-                          key={`${row.action}-${row.keys}`}
-                          className="type-meta flex justify-between gap-4"
-                        >
-                          <span className="min-w-0 text-muted">{row.action}</span>
-                          <span className="shrink-0 text-right text-foreground tabular-nums">
-                            {row.keys}
+                {activeTab === "shortcuts" && (
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <section className="space-y-8">
+                      <header>
+                        <h3 className="type-title text-foreground">Keyboard Shortcuts</h3>
+                        <p className="type-meta mt-1.5 text-muted max-w-2xl">
+                          Global and app-specific keybindings.
+                        </p>
+                      </header>
+                      <ul className="m-0 list-none p-0">
+                        {KEYBOARD_SHORTCUTS_HELP.map((row) => (
+                          <li
+                            key={`${row.action}-${row.keys}`}
+                            className="flex items-center justify-between gap-4 border-b border-border/40 py-3.5 last:border-0"
+                          >
+                            <span className="type-body text-foreground">{row.action}</span>
+                            <kbd className="shrink-0 rounded-md border border-border/60 bg-white/5 px-2.5 py-1 type-meta text-muted tabular-nums shadow-sm">
+                              {row.keys}
+                            </kbd>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  </div>
+                )}
+
+                {activeTab === "info" && (
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <section className="flex flex-col items-center justify-center py-6 text-center">
+                      <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-accent/20 to-accent/5 ring-1 ring-accent/20 shadow-inner">
+                        <img
+                          src="/icon.png"
+                          alt="Loopify Logo"
+                          className="h-14 w-14 object-contain drop-shadow-md"
+                        />
+                      </div>
+                      <h3 className="type-heading text-foreground mb-3">Loopify</h3>
+                      <p className="type-meta text-muted mb-10 max-w-xs leading-relaxed">
+                        A premium desktop music player built for aesthetics, performance, and local
+                        libraries.
+                      </p>
+
+                      <div className="flex w-full max-w-md flex-col gap-5 rounded-2xl border border-border/50 bg-white/[0.02] p-6 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="type-body font-medium text-foreground">Version</span>
+                          <span className="type-body text-muted tabular-nums">{version}</span>
+                        </div>
+                        <div className="h-px w-full bg-border/40" />
+                        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+                          <span className="type-meta text-subtle" aria-live="polite">
+                            {updateStatus
+                              ? formatUpdateStatus(updateStatus)
+                              : "Checking for updates..."}
                           </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
+                          {renderUpdateButton(updateStatus, isInstallingUpdate, handleUpdateAction)}
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                )}
               </div>
 
-              <div className="border-t border-border px-6 py-4 sm:px-8">
+              <div className="border-t border-border bg-surface px-6 py-4 sm:px-8 shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <span className="type-meta text-muted">Loopify v{version}</span>
-                    {updateStatus ? (
-                      <p className="type-meta mt-1 text-subtle" aria-live="polite">
-                        {formatUpdateStatus(updateStatus)}
+                    {saveMessage && (
+                      <p
+                        className={`type-meta text-center animate-in fade-in slide-in-from-left-2 ${
+                          saveMessage.includes("success") ? "text-accent" : "text-danger"
+                        }`}
+                      >
+                        {saveMessage}
                       </p>
-                    ) : null}
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
-                    {renderUpdateButton(updateStatus, isInstallingUpdate, handleUpdateAction)}
                     <Button type="submit" size="lg" disabled={isSaving}>
                       {isSaving ? (
                         <span className="flex items-center gap-2">
@@ -482,15 +551,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </Button>
                   </div>
                 </div>
-                {saveMessage && (
-                  <p
-                    className={`type-meta mt-3 text-center ${
-                      saveMessage.includes("success") ? "text-accent" : "text-danger"
-                    }`}
-                  >
-                    {saveMessage}
-                  </p>
-                )}
               </div>
             </form>
           </>

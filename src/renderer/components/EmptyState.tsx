@@ -44,7 +44,7 @@ export function EmptyState({
           <div
             className={cn(
               "flex shrink-0 items-center justify-center rounded-[1.35rem] border border-border bg-white/[0.045] text-foreground/84 shadow-[inset_0_1px_0_oklch(1_0_0_/_0.07)]",
-              "transition-all duration-500 ease-out-quart hover:scale-105 hover:text-accent hover:shadow-md cursor-default",
+              "transition duration-500 ease-out-quart hover:scale-105 hover:text-accent hover:shadow-md cursor-default",
               isCompact ? "h-12 w-12" : "h-16 w-16"
             )}
           >

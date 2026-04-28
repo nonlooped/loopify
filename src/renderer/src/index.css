@@ -3,8 +3,8 @@
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --color-canvas: oklch(0.15 0 0);
-  --color-surface: oklch(0.2 0 0 / 0.6);
-  --color-raised: oklch(0.25 0 0 / 0.6);
+  --color-surface: oklch(0.2 0 0);
+  --color-raised: oklch(0.25 0 0);
   --color-border: oklch(1 0 0 / 0.1);
   --color-foreground: oklch(0.95 0 0);
   --color-muted: oklch(0.65 0 0);
@@ -58,6 +58,91 @@
     background: oklch(0.55 0.12 260 / 0.35); /* System Blue selection */
     color: var(--color-foreground);
   }
+}
+
+/* ── Custom title bar (frameless window) ──────────────────────────── */
+@layer components {
+  .titlebar {
+    background: var(--color-canvas);
+  }
+
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+
+  .titlebar-nodrag {
+    -webkit-app-region: no-drag;
+  }
+
+  .titlebar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .titlebar-btn:hover {
+    background: oklch(1 0 0 / 0.08);
+    color: var(--color-foreground);
+  }
+
+  .titlebar-btn:active {
+    background: oklch(1 0 0 / 0.05);
+  }
+
+  .titlebar-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+
+  .titlebar-btn-close:hover {
+    background: oklch(0.6 0.2 25);
+    color: oklch(0.99 0 0);
+  }
+
+  .titlebar-btn-close:active {
+    background: oklch(0.5 0.18 25);
+    color: oklch(0.99 0 0);
+  }
+}
+
+/* Title bar now-playing track crossfade */
+@keyframes titlebar-track-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.titlebar-track {
+  animation: titlebar-track-in 220ms var(--ease-out-quart) both;
+}
+
+/* Playing indicator pulse */
+@keyframes titlebar-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.titlebar-playing-dot {
+  animation: titlebar-pulse 1.8s ease-in-out infinite;
 }
 
 @layer components {
@@ -180,6 +265,12 @@
     animation: none;
   }
   .animate-in-sidebar-copy {
+    animation: none;
+  }
+  .titlebar-track {
+    animation: none;
+  }
+  .titlebar-playing-dot {
     animation: none;
   }
 }

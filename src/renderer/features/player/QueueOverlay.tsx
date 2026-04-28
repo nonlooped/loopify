@@ -78,14 +78,14 @@ function QueueOverlayImpl({
       {compact && isOpen ? (
         <button
           type="button"
-          className="cursor-pointer absolute inset-0 z-40 bg-canvas/24 backdrop-blur-[2px]"
+          className="cursor-pointer absolute inset-0 z-40 bg-canvas/60"
           aria-label="Close queue"
           onClick={onToggle}
         />
       ) : null}
       <aside
         className={cn(
-          "z-40 flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-border bg-surface/95 shadow-panel backdrop-blur-3xl motion-reduce:transition-none",
+          "z-40 flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-border bg-surface shadow-panel motion-reduce:transition-none",
           compact
             ? "absolute inset-y-0 right-0 w-[min(24rem,calc(100vw-5.5rem))] max-w-full transition-[transform,opacity] duration-300 ease-out-quart"
             : "transition-[width] duration-300 ease-out-quart",

@@ -23,7 +23,7 @@ import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { formatModShortcut, formatModShortcutTitle } from "@/lib/shortcut"
 
 const rowBase =
-  "group relative flex w-full min-w-0 h-10 items-center gap-3 rounded-lg px-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
+  "group relative flex w-full min-w-0 min-h-[44px] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
 
 const rowInteractive = cn(
   rowBase,
@@ -32,12 +32,15 @@ const rowInteractive = cn(
   "active:scale-[0.99] motion-reduce:active:scale-100"
 )
 
-const rowActive = cn(rowBase, "bg-white/[0.06] text-foreground")
+const rowActive = cn(
+  rowBase,
+  "bg-white/[0.08] text-foreground shadow-[inset_0_0_0_1px_oklch(1_0_0/0.1)]"
+)
 
 const iconWrap = (active: boolean) =>
   cn(
-    "flex h-8 w-8 shrink-0 items-center justify-center transition-colors duration-ui ease-out-quart",
-    active ? "text-foreground" : "text-muted group-hover:text-foreground"
+    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-ui ease-out-quart",
+    active ? "bg-accent/15 text-accent" : "bg-white/5 text-muted group-hover:text-foreground"
   )
 
 interface NavRailProps {
@@ -119,12 +122,13 @@ function NavRailImpl({
     <aside
       className={cn(
         "relative z-40 flex h-full min-h-0 shrink-0 flex-col border-r border-border/40",
-        "bg-surface/95 text-foreground backdrop-blur-3xl",
+        "bg-surface text-foreground",
         "transition-[width] duration-300 ease-out-quart motion-reduce:transition-none",
         isExpanded ? "w-64" : "w-20"
       )}
       aria-label="Primary navigation"
     >
+      <div className="titlebar-drag pointer-events-auto absolute inset-x-0 top-0 h-9 z-0" />
       <div className="relative flex min-h-0 flex-1 flex-col px-2.5 pb-4 pt-5">
         <header className="mb-4 h-20 shrink-0">
           <div className="flex h-full w-full min-w-0 items-center gap-3">
@@ -145,7 +149,7 @@ function NavRailImpl({
             <div
               className={cn(
                 "flex min-w-0 flex-col justify-center overflow-hidden pr-0.5",
-                "transition-[opacity,transform] duration-300 ease-out-quart motion-reduce:translate-x-0 motion-reduce:transition-none",
+                "transition-[opacity,transform,max-width] duration-300 ease-out-quart motion-reduce:translate-x-0 motion-reduce:transition-none",
                 isExpanded
                   ? "max-w-full flex-1 translate-x-0 opacity-100"
                   : "pointer-events-none w-0 max-w-0 flex-0 -translate-x-1 opacity-0"
@@ -158,7 +162,7 @@ function NavRailImpl({
           </div>
         </header>
 
-        <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden overscroll-contain">
           <div className="flex flex-col gap-0.5">
             <NavRow
               expanded={isExpanded}
@@ -238,7 +242,7 @@ function NavRailImpl({
           </div>
         </nav>
 
-        <div className="mt-auto flex flex-col gap-1 pt-4">
+        <div className="mt-auto flex flex-col gap-0.5 pt-4">
           <button
             type="button"
             onClick={onToggleExpand}
@@ -248,9 +252,9 @@ function NavRailImpl({
           >
             <span className={iconWrap(false)}>
               {isExpanded ? (
-                <PanelLeftClose className="h-5 w-5" strokeWidth={1.75} />
+                <PanelLeftClose className="h-4 w-4" strokeWidth={2} />
               ) : (
-                <PanelLeftOpen className="h-5 w-5" strokeWidth={1.75} />
+                <PanelLeftOpen className="h-4 w-4" strokeWidth={2} />
               )}
             </span>
             {isExpanded ? (
@@ -319,7 +323,6 @@ function NavRow({
       data-active={active || undefined}
       className={cn(
         active ? rowActive : rowInteractive,
-        "items-center",
         isDropTarget && "bg-accent/15 ring-2 ring-accent/60"
       )}
     >
