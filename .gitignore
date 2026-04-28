@@ -20,6 +20,7 @@ data
 *.db-wal
 
 # AI agents
+.opencode
 .agents
 .claude
 CLAUDE.md
