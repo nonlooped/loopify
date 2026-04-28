@@ -1,11 +1,19 @@
-import { Download, Heart, Loader2, Play, Plus, Search, X } from "lucide-react"
+import { Download, ExternalLink, Heart, Loader2, Play, Plus, Search, X } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { CatalogTrack, TrackCandidate } from "src/shared/types/music"
 import { useFocusTrap } from "@/hooks/useFocusTrap"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
-import { formatModShortcutTitle } from "@/lib/shortcut"
+
+function looksLikeUrl(text: string): boolean {
+  try {
+    const url = new URL(text.trim())
+    return url.protocol === "http:" || url.protocol === "https:"
+  } catch {
+    return false
+  }
+}
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -110,6 +118,12 @@ export function CommandPalette({
       setIsLoading(false)
       return
     }
+    // URLs are handled by the URL card UI — no catalog search needed
+    if (looksLikeUrl(text.trim())) {
+      setResults([])
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     setError(null)
     try {
@@ -152,6 +166,27 @@ export function CommandPalette({
     }, 350)
   }
 
+  const [urlLoading, setUrlLoading] = useState<"play" | "enqueue" | null>(null)
+
+  const handlePlayUrl = useCallback(
+    async (playNow: boolean) => {
+      const url = query.trim()
+      if (!url) return
+      setUrlLoading(playNow ? "play" : "enqueue")
+      setError(null)
+      try {
+        await window.loopify.queue.add({ sourceUrl: url, playNow })
+        if (playNow) onClose()
+      } catch (err) {
+        console.error("URL play failed:", err)
+        setError(err instanceof Error ? err.message : "Could not play that URL.")
+      } finally {
+        setUrlLoading(null)
+      }
+    },
+    [query, onClose]
+  )
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault()
@@ -161,6 +196,13 @@ export function CommandPalette({
     if (e.key === "ArrowUp") {
       e.preventDefault()
       setActiveIndex((i) => (i > 0 ? i - 1 : i))
+      return
+    }
+    // Enter on a URL query: play it directly
+    if (e.key === "Enter" && looksLikeUrl(query.trim())) {
+      e.preventDefault()
+      const playNow = !(e.metaKey || e.ctrlKey)
+      void handlePlayUrl(playNow)
       return
     }
     if (e.key !== "Enter" || results.length === 0 || activeIndex < 0) return
@@ -201,7 +243,7 @@ export function CommandPalette({
     <div
       ref={backdropRef}
       onTransitionEnd={onBackdropTransitionEnd}
-      className={`ol-backdrop fixed inset-0 z-100 flex items-start justify-center pt-32 bg-canvas/60 backdrop-blur-3xl ${showOverlay ? "ol-open" : ""}`}
+      className={`ol-backdrop fixed top-9 inset-x-0 bottom-0 z-100 flex items-start justify-center pt-32 bg-canvas/80 ${showOverlay ? "ol-open" : ""}`}
     >
       <div
         ref={focusRef}
@@ -242,20 +284,62 @@ export function CommandPalette({
               <Search className="h-8 w-8 text-border" />
               <p className="type-body-sm text-muted">Start typing to search...</p>
               <p className="type-meta text-subtle">
-                Search playable sources. Enter plays the top result,{" "}
-                {formatModShortcutTitle("Enter")} adds it to the queue.
+                Search by song or artist, or paste a YouTube / SoundCloud URL to play directly.
               </p>
             </div>
           )}
-          {query.trim() && !isLoading && results.length === 0 && !error && (
-            <div className="py-12 text-center flex flex-col items-center justify-center gap-2">
-              <Search className="h-8 w-8 text-border" />
-              <p className="type-body-sm text-muted">No results found</p>
-              <p className="type-meta text-subtle">
-                Try different words, an artist plus title, or paste a playlist URL in Import.
-              </p>
+          {query.trim() && looksLikeUrl(query.trim()) && (
+            <div className={cn("group flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/5")}>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-raised">
+                <ExternalLink className="h-5 w-5 text-muted" />
+              </div>
+              <div className="flex flex-1 flex-col min-w-0">
+                <span className="type-body-sm truncate text-foreground">Play URL</span>
+                <span className="type-meta truncate text-muted">{query.trim()}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {urlLoading ? (
+                  <Loader2 className="h-5 w-5 text-muted animate-spin mx-1.5" />
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!!urlLoading}
+                      onClick={() => void handlePlayUrl(true)}
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-accent text-on-accent hover:scale-105 active:scale-95 transition-transform duration-press ease-out-quart motion-reduce:hover:scale-100 motion-reduce:active:scale-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Play now"
+                      aria-label="Play URL"
+                    >
+                      <Play className="h-4 w-4 fill-current ml-0.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!urlLoading}
+                      onClick={() => void handlePlayUrl(false)}
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Add to queue"
+                      aria-label="Add URL to queue"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
+          {query.trim() &&
+            !looksLikeUrl(query.trim()) &&
+            !isLoading &&
+            results.length === 0 &&
+            !error && (
+              <div className="py-12 text-center flex flex-col items-center justify-center gap-2">
+                <Search className="h-8 w-8 text-border" />
+                <p className="type-body-sm text-muted">No results found</p>
+                <p className="type-meta text-subtle">
+                  Try different words, an artist plus title, or paste a URL to play directly.
+                </p>
+              </div>
+            )}
           {results.map((hit, index) => {
             const rowId = `${hit.catalogProvider}:${hit.catalogId}`
             const isResolving = resolvingId === rowId
