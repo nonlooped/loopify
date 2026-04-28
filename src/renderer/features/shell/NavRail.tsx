@@ -23,26 +23,21 @@ import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { formatModShortcut, formatModShortcutTitle } from "@/lib/shortcut"
 
 const rowBase =
-  "group relative flex w-full min-w-0 min-h-14 items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
+  "group relative flex w-full min-w-0 h-10 items-center gap-3 rounded-lg px-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
 
 const rowInteractive = cn(
   rowBase,
-  "cursor-pointer text-muted hover:bg-white/5 hover:text-foreground",
+  "cursor-pointer text-muted hover:bg-white/[0.04] hover:text-foreground",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50",
-  "active:scale-[0.98] motion-reduce:active:scale-100"
+  "active:scale-[0.99] motion-reduce:active:scale-100"
 )
 
-const rowActive = cn(
-  rowBase,
-  "bg-white/[0.08] text-foreground shadow-[inset_0_0_0_1px_oklch(1_0_0/0.1)]"
-)
+const rowActive = cn(rowBase, "bg-white/[0.06] text-foreground")
 
 const iconWrap = (active: boolean) =>
   cn(
-    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors duration-ui ease-out-quart",
-    active
-      ? "bg-accent/15 text-accent"
-      : "bg-white/5 text-muted group-hover:bg-white/10 group-hover:text-foreground"
+    "flex h-8 w-8 shrink-0 items-center justify-center transition-colors duration-ui ease-out-quart",
+    active ? "text-foreground" : "text-muted group-hover:text-foreground"
   )
 
 interface NavRailProps {
@@ -123,10 +118,10 @@ function NavRailImpl({
   return (
     <aside
       className={cn(
-        "relative z-40 flex h-full min-h-0 shrink-0 flex-col border-r border-border",
-        "bg-surface/95 text-foreground shadow-panel backdrop-blur-3xl",
+        "relative z-40 flex h-full min-h-0 shrink-0 flex-col border-r border-border/40",
+        "bg-surface/95 text-foreground backdrop-blur-3xl",
         "transition-[width] duration-300 ease-out-quart motion-reduce:transition-none",
-        isExpanded ? "w-80" : "w-21"
+        isExpanded ? "w-64" : "w-20"
       )}
       aria-label="Primary navigation"
     >
@@ -163,28 +158,25 @@ function NavRailImpl({
           </div>
         </header>
 
-        <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden overscroll-contain">
           <div className="flex flex-col gap-0.5">
-            <SectionLabel expanded={isExpanded}>Browse</SectionLabel>
             <NavRow
               expanded={isExpanded}
               label="Library"
-              description="Your music collection"
               active={atCollection}
               selection="location"
               onClick={onGoToCollection}
               title="Library"
-              icon={<LayoutGrid className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<LayoutGrid className="h-4 w-4" strokeWidth={2} />}
             />
             <NavRow
               expanded={isExpanded}
               label="Liked songs"
-              description="Your favorites"
               active={likedActive}
               selection="location"
               onClick={goToLiked}
               title="Liked songs"
-              icon={<Heart className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<Heart className="h-4 w-4" strokeWidth={2} />}
               isDropTarget={isLikedDropTarget}
               onDragOver={onAddTrackToPlaylist ? handleLikedDragOver : undefined}
               onDragLeave={onAddTrackToPlaylist ? handleLikedDragLeave : undefined}
@@ -193,67 +185,60 @@ function NavRailImpl({
             <NavRow
               expanded={isExpanded}
               label="Offline"
-              description="Playable without internet"
               active={offlineActive}
               selection="location"
               onClick={goToOffline}
               title="Offline songs"
-              icon={<HardDrive className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<HardDrive className="h-4 w-4" strokeWidth={2} />}
             />
           </div>
 
           <div className="flex flex-col gap-0.5">
-            <SectionLabel expanded={isExpanded}>Find &amp; add</SectionLabel>
             <NavRow
               expanded={isExpanded}
               label="Search"
-              description="Find any song"
               hint={formatModShortcut("K")}
               active={false}
               selection="none"
               onClick={onOpenSearch}
               title={`Search (${formatModShortcutTitle("K")})`}
-              icon={<Search className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<Search className="h-4 w-4" strokeWidth={2} />}
             />
             <NavRow
               expanded={isExpanded}
               label="Import"
-              description="Add from YouTube or Spotify"
               active={false}
               selection="none"
               onClick={onOpenImport}
               title="Import a playlist"
-              icon={<Link className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<Link className="h-4 w-4" strokeWidth={2} />}
             />
             <NavRow
               expanded={isExpanded}
               label="New playlist"
-              description="Start a fresh list"
               active={false}
               selection="none"
               onClick={onCreatePlaylist}
               title="New playlist"
-              icon={<Plus className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<Plus className="h-4 w-4" strokeWidth={2} />}
             />
           </div>
 
           <div className="flex flex-col gap-0.5">
-            <SectionLabel expanded={isExpanded}>Play</SectionLabel>
             <NavRow
               expanded={isExpanded}
               label="Queue"
               hint={queueLength > 0 ? String(queueLength) : undefined}
-              description={queueLength > 0 ? "Your queue" : undefined}
               active={isQueueOpen}
               selection="toggle"
               onClick={onToggleQueue}
               title={isQueueOpen ? "Close queue" : "Open queue"}
-              icon={<ListMusic className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+              icon={<ListMusic className="h-4 w-4" strokeWidth={2} />}
             />
           </div>
         </nav>
 
-        <div className="mt-auto flex flex-col gap-1 border-t border-border/80 pt-4">
+        <div className="mt-auto flex flex-col gap-1 pt-4">
           <button
             type="button"
             onClick={onToggleExpand}
@@ -279,7 +264,7 @@ function NavRailImpl({
             selection="none"
             onClick={onOpenSettings}
             title="Settings"
-            icon={<Settings className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />}
+            icon={<Settings className="h-4 w-4" strokeWidth={2} />}
           />
         </div>
       </div>
@@ -290,26 +275,9 @@ function NavRailImpl({
 export const NavRail = memo(NavRailImpl)
 NavRail.displayName = "NavRail"
 
-/** Reserves the same vertical space in expanded and collapsed modes to avoid nav jumping. */
-function SectionLabel({ children, expanded }: { children: ReactNode; expanded: boolean }) {
-  return (
-    <div className="mb-1.5 flex h-5 min-w-0 shrink-0 items-end px-2">
-      <p
-        className={cn(
-          "type-meta m-0 min-w-0 max-w-full truncate text-subtle",
-          !expanded && "invisible"
-        )}
-      >
-        {children}
-      </p>
-    </div>
-  )
-}
-
 function NavRow({
   expanded,
   label,
-  description,
   hint,
   active,
   selection = "none",
@@ -323,7 +291,6 @@ function NavRow({
 }: {
   expanded: boolean
   label: string
-  description?: string
   active: boolean
   selection?: "location" | "toggle" | "none"
   onClick: () => void
@@ -359,16 +326,7 @@ function NavRow({
       <span className={iconWrap(active)}>{icon}</span>
       {expanded ? (
         <span className="min-w-0 flex-1 overflow-hidden text-left">
-          <span className="type-body-sm block truncate font-medium text-foreground">{label}</span>
-          <span
-            className={cn(
-              "type-meta mt-0.5 block min-h-4 max-w-full truncate leading-[1.3]",
-              description ? "text-subtle" : "invisible select-none"
-            )}
-            aria-hidden={!description}
-          >
-            {description || "\u00A0"}
-          </span>
+          <span className="type-body-sm block truncate text-foreground">{label}</span>
         </span>
       ) : null}
       {hint && expanded ? (

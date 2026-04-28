@@ -72,6 +72,7 @@
       }
     ],
     "win": {
+      "icon": "src/renderer/public/icon.png",
       "target": [
         {
           "target": "nsis",
@@ -83,12 +84,14 @@
       "artifactName": "Loopify-Setup-${version}.${ext}"
     },
     "mac": {
+      "icon": "src/renderer/public/icon.png",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "linux": {
+      "icon": "src/renderer/public/icon.png",
       "target": [
         {
           "target": "AppImage",
