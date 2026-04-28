@@ -166,7 +166,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete }: ImportModalPr
                   </p>
                 )}
                 {activeJob.truncated && (
-                  <p className="text-xs text-amber-400">
+                  <p className="type-meta text-foreground">
                     Playlist was truncated to max import size.
                   </p>
                 )}

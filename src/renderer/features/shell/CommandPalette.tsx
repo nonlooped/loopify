@@ -1,7 +1,9 @@
 import { Download, Heart, Loader2, Play, Plus, Search, X } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { CatalogTrack, TrackCandidate } from "src/shared/types/music"
+import { useFocusTrap } from "@/hooks/useFocusTrap"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
 import { formatModShortcutTitle } from "@/lib/shortcut"
 
@@ -33,6 +35,7 @@ export function CommandPalette({
   const resultsContainerRef = useRef<HTMLDivElement>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { shouldRender, showOverlay, onBackdropTransitionEnd } = useOverlayPresence(isOpen)
+  const reducedMotion = usePrefersReducedMotion()
 
   // Reset state when closed (after unmount, so exit can show last content)
   useEffect(() => {
@@ -57,9 +60,9 @@ export function CommandPalette({
     if (!container) return
     const activeEl = container.querySelector<HTMLDivElement>("[data-active-item='true']")
     if (activeEl) {
-      activeEl.scrollIntoView({ block: "nearest", behavior: "smooth" })
+      activeEl.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : "smooth" })
     }
-  }, [activeIndex])
+  }, [activeIndex, reducedMotion])
 
   // Clear pending debounce timer on unmount
   useEffect(() => {
@@ -190,6 +193,8 @@ export function CommandPalette({
     return `${m}:${s.toString().padStart(2, "0")}`
   }
 
+  const { containerRef: focusRef, handleKeyDown: onFocusTrapKeyDown } = useFocusTrap(showOverlay)
+
   if (!shouldRender) return null
 
   return (
@@ -199,6 +204,11 @@ export function CommandPalette({
       className={`ol-backdrop fixed inset-0 z-100 flex items-start justify-center pt-32 bg-canvas/60 backdrop-blur-3xl ${showOverlay ? "ol-open" : ""}`}
     >
       <div
+        ref={focusRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
+        onKeyDown={onFocusTrapKeyDown}
         className={`ol-palette-panel w-full max-w-2xl bg-surface rounded-2xl shadow-panel overflow-hidden flex flex-col ${showOverlay ? "ol-open" : ""}`}
       >
         <div className="flex items-center px-4 py-4 border-b border-border">

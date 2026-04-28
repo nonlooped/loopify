@@ -1,5 +1,6 @@
 import { X } from "lucide-react"
 import type { ReactNode } from "react"
+import { useFocusTrap } from "@/hooks/useFocusTrap"
 import { cn } from "@/lib/cn"
 
 interface ModalFrameProps {
@@ -29,8 +30,15 @@ export function ModalFrame({
   closeLabel = "Close dialog",
   isOpen = true,
 }: ModalFrameProps) {
+  const { containerRef, handleKeyDown } = useFocusTrap(isOpen)
+
   return (
     <div
+      ref={containerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onKeyDown={handleKeyDown}
       className={cn(
         "ol-panel mx-auto flex max-h-[min(92vh,58rem)] w-full flex-col overflow-hidden rounded-2xl bg-surface shadow-panel",
         isOpen && "ol-open",

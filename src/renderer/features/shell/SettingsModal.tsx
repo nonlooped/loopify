@@ -4,6 +4,7 @@ import type { UpdateStatus } from "src/shared/contracts/ipc"
 import type { AppSettings } from "src/shared/types/music"
 import { Button } from "@/components/Button"
 import { TextField } from "@/components/TextField"
+import { useFocusTrap } from "@/hooks/useFocusTrap"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { KEYBOARD_SHORTCUTS_HELP } from "@/lib/keyboard-shortcuts"
 
@@ -145,6 +146,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }
 
+  const { containerRef: focusRef, handleKeyDown } = useFocusTrap(showOverlay)
+
   if (!shouldRender) return null
 
   return (
@@ -154,6 +157,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       className={`ol-backdrop fixed inset-0 z-100 flex items-center justify-center bg-canvas/80 px-3 py-3 backdrop-blur-md sm:px-4 sm:py-4 ${showOverlay ? "ol-open" : ""}`}
     >
       <div
+        ref={focusRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        onKeyDown={handleKeyDown}
         className={`ol-panel flex max-h-[min(92vh,58rem)] w-full max-w-[min(42rem,100%)] flex-col overflow-hidden rounded-2xl bg-surface shadow-panel ${showOverlay ? "ol-open" : ""}`}
       >
         {!settings ? (

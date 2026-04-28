@@ -136,13 +136,19 @@ export function PlaylistActionModal({
                 onDismiss()
               }}
             >
-              <TextField
-                name="name"
-                defaultValue={renderState.kind === "rename" ? renderState.currentName : ""}
-                placeholder="Playlist name"
-                autoFocus
-                className="h-12"
-              />
+              <div className="space-y-2">
+                <label htmlFor="playlist-name" className="type-label text-subtle">
+                  Playlist name
+                </label>
+                <TextField
+                  id="playlist-name"
+                  name="name"
+                  defaultValue={renderState.kind === "rename" ? renderState.currentName : ""}
+                  placeholder="Enter a name"
+                  autoFocus
+                  className="h-12"
+                />
+              </div>
               <Button size="lg" type="submit" className="w-full mt-2">
                 {renderState.kind === "create" ? "Create playlist" : "Save changes"}
               </Button>
