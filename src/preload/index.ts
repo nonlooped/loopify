@@ -3,6 +3,19 @@ import { ipcChannels, type LoopifyApi, type UpdateStatus } from "../shared/contr
 import type { ImportJob, PlayerState, QueueItem, Track } from "../shared/types/music"
 
 const api: LoopifyApi = {
+  window: {
+    minimize: () => ipcRenderer.send(ipcChannels.windowMinimize),
+    maximize: () => ipcRenderer.send(ipcChannels.windowMaximize),
+    unmaximize: () => ipcRenderer.send(ipcChannels.windowUnmaximize),
+    close: () => ipcRenderer.send(ipcChannels.windowClose),
+    isMaximized: () => ipcRenderer.invoke(ipcChannels.windowIsMaximized),
+    onMaximizedChange: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, maximized: boolean): void =>
+        listener(maximized)
+      ipcRenderer.on(ipcChannels.windowMaximizedChanged, wrapped)
+      return () => ipcRenderer.off(ipcChannels.windowMaximizedChanged, wrapped)
+    },
+  },
   player: {
     getState: () => ipcRenderer.invoke(ipcChannels.playerGetState),
     play: (queueItemId) => ipcRenderer.invoke(ipcChannels.playerPlay, queueItemId),

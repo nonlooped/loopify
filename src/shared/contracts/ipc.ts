@@ -54,6 +54,14 @@ export type UpdateStatus = {
 }
 
 export type LoopifyApi = {
+  window: {
+    minimize: () => void
+    maximize: () => void
+    unmaximize: () => void
+    close: () => void
+    isMaximized: () => Promise<boolean>
+    onMaximizedChange: (listener: (maximized: boolean) => void) => () => void
+  }
   player: {
     getState: () => Promise<PlayerState>
     play: (queueItemId: string) => Promise<PlayerState>
@@ -123,6 +131,12 @@ export type LoopifyApi = {
 }
 
 export const ipcChannels = {
+  windowMinimize: "window:minimize",
+  windowMaximize: "window:maximize",
+  windowUnmaximize: "window:unmaximize",
+  windowClose: "window:close",
+  windowIsMaximized: "window:is-maximized",
+  windowMaximizedChanged: "window:maximized-changed",
   playerStateChanged: "player:state-changed",
   playerGetState: "player:get-state",
   playerPlay: "player:play",

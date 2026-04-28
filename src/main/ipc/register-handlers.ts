@@ -79,6 +79,20 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     return queue
   }
 
+  // ── Window controls ────────────────────────────────────────────────
+  ipcMain.on(ipcChannels.windowMinimize, () => deps.window.minimize())
+  ipcMain.on(ipcChannels.windowMaximize, () => deps.window.maximize())
+  ipcMain.on(ipcChannels.windowUnmaximize, () => deps.window.unmaximize())
+  ipcMain.on(ipcChannels.windowClose, () => deps.window.close())
+  ipcMain.handle(ipcChannels.windowIsMaximized, () => deps.window.isMaximized())
+
+  deps.window.on("maximize", () => {
+    deps.window.webContents.send(ipcChannels.windowMaximizedChanged, true)
+  })
+  deps.window.on("unmaximize", () => {
+    deps.window.webContents.send(ipcChannels.windowMaximizedChanged, false)
+  })
+
   const getDownloadedPlaybackPath = (track: Track): string | null => {
     if (track.downloadStatus !== "downloaded" || !track.downloadedFilePath) {
       return null

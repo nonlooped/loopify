@@ -52,6 +52,7 @@ function shutdownPlayer(): void {
 
 async function createWindow(): Promise<void> {
   const windowIcon = resolveWindowIcon()
+  const isMac = process.platform === "darwin"
   const window = new BrowserWindow({
     width: 1180,
     height: 780,
@@ -60,6 +61,8 @@ async function createWindow(): Promise<void> {
     title: "Loopify Desktop",
     backgroundColor: "#0a0a0b",
     autoHideMenuBar: true,
+    frame: isMac,
+    titleBarStyle: isMac ? "hiddenInset" : "default",
     ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
