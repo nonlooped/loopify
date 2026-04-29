@@ -3,6 +3,7 @@ import { Loader2, X } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { UpdateStatus } from "src/shared/contracts/ipc"
 import type { AppSettings } from "src/shared/types/music"
+import iconUrl from "@/assets/icon.png?url"
 import { Button } from "@/components/Button"
 import { TextField } from "@/components/TextField"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
@@ -131,7 +132,7 @@ export function SettingsModal() {
       onTransitionEnd={onBackdropTransitionEnd}
       className={`ol-backdrop fixed top-9 inset-x-0 bottom-0 z-100 flex items-center justify-center bg-canvas/80 px-3 py-3 sm:px-4 sm:py-4 ${showOverlay ? "ol-open" : ""}`}
     >
-      <FocusTrap active={showOverlay}>
+      <FocusTrap active={showOverlay && settings != null}>
         <div
           role="dialog"
           aria-modal="true"
@@ -471,7 +472,7 @@ export function SettingsModal() {
                       <section className="flex flex-col items-center justify-center py-6 text-center">
                         <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-accent/20 to-accent/5 ring-1 ring-accent/20 shadow-inner">
                           <img
-                            src="/icon.png"
+                            src={iconUrl}
                             alt="Loopify Logo"
                             className="h-14 w-14 object-contain drop-shadow-md"
                           />

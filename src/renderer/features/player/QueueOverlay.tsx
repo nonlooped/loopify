@@ -97,13 +97,15 @@ function SortableQueueItem({
         isDragging && "shadow-lg bg-surface-elevated"
       )}
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing text-subtle hover:text-foreground shrink-0"
-      >
-        <GripVertical className="h-4 w-4" />
-      </div>
+      {isOpen ? (
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-subtle hover:text-foreground shrink-0"
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+      ) : null}
 
       <button
         type="button"

@@ -3,6 +3,7 @@ import type { PlayerState } from "../../shared/types/music"
 
 export const DISCORD_APPLICATION_ID = "1340763643796783146"
 const RECONNECT_DELAY_MS = 5_000
+const MAX_RECONNECT_DELAY_MS = 60_000
 
 export type DiscordRpcSession = {
   connect: () => Promise<void>
@@ -31,6 +32,8 @@ export class DiscordPresenceService {
   private shuttingDown = false
   private lastActivity: SetActivity | null = null
   private lastSyncedActivityKey: string | null = null
+  private reconnectAttempts = 0
+  private lastErrorMessage: string | null = null
 
   constructor(options: DiscordPresenceServiceOptions) {
     this.applicationId = options.applicationId
@@ -46,11 +49,14 @@ export class DiscordPresenceService {
     this.enabled = enabled
     if (!enabled) {
       this.lastSyncedActivityKey = null
+      this.reconnectAttempts = 0
+      this.lastErrorMessage = null
       void this.clearAndDisconnect()
       return
     }
     // Force re-publish on next sync once re-enabled.
     this.lastSyncedActivityKey = null
+    this.reconnectAttempts = 0
     this.scheduleReconnect(0)
   }
 
@@ -67,16 +73,28 @@ export class DiscordPresenceService {
     }
     this.lastSyncedActivityKey = activityKey
     this.lastActivity = buildDiscordActivity(state)
-    this.clearReconnectTimer()
+
     if (!this.lastActivity) {
       void this.clearActivity()
       return
     }
-    void this.publish(this.lastActivity)
+
+    if (this.connected) {
+      void this.publish(this.lastActivity)
+      return
+    }
+
+    // Not connected — ensure a reconnect is scheduled so the activity
+    // gets published once Discord is available.
+    if (!this.reconnectTimer && !this.connectPromise) {
+      this.scheduleReconnect()
+    }
   }
 
   shutdown(): void {
     this.shuttingDown = true
+    this.reconnectAttempts = 0
+    this.lastErrorMessage = null
     this.clearReconnectTimer()
     void this.clearAndDisconnect()
   }
@@ -85,8 +103,15 @@ export class DiscordPresenceService {
     try {
       const session = await this.ensureConnected()
       await session.setActivity(activity)
+      this.reconnectAttempts = 0
+      this.lastErrorMessage = null
     } catch (error) {
-      console.error("Discord presence update failed", error)
+      const message = error instanceof Error ? error.message : String(error)
+      if (this.lastErrorMessage !== message) {
+        console.error("Discord presence update failed", error)
+        this.lastErrorMessage = message
+      }
+      await this.destroySession()
       this.scheduleReconnect()
     }
   }
@@ -116,6 +141,19 @@ export class DiscordPresenceService {
     await session.destroy()
   }
 
+  private async destroySession(): Promise<void> {
+    if (!this.session) return
+    const session = this.session
+    this.session = null
+    this.connected = false
+    this.connectPromise = null
+    try {
+      await session.destroy()
+    } catch {
+      /* ignore */
+    }
+  }
+
   private async ensureConnected(): Promise<DiscordRpcSession> {
     if (this.session && this.connected && !this.connectPromise) {
       return this.session
@@ -137,9 +175,15 @@ export class DiscordPresenceService {
         .connect()
         .then(() => {
           this.connected = true
+          this.reconnectAttempts = 0
+          this.lastErrorMessage = null
         })
         .catch((error) => {
           this.connected = false
+          if (this.session) {
+            void this.session.destroy().catch(() => {})
+            this.session = null
+          }
           throw error
         })
         .finally(() => {
@@ -153,10 +197,16 @@ export class DiscordPresenceService {
     return this.session
   }
 
-  private scheduleReconnect(delayMs = this.reconnectDelayMs): void {
-    if (!this.enabled || this.shuttingDown || this.reconnectTimer) {
+  private scheduleReconnect(delayMs?: number): void {
+    if (!this.enabled || this.shuttingDown || this.reconnectTimer || this.connectPromise) {
       return
     }
+    const actualDelay =
+      delayMs ??
+      Math.min(
+        this.reconnectDelayMs * 2 ** Math.max(0, this.reconnectAttempts - 1),
+        MAX_RECONNECT_DELAY_MS
+      )
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       if (!this.enabled || this.shuttingDown) {
@@ -164,14 +214,18 @@ export class DiscordPresenceService {
       }
       void this.ensureConnected()
         .then(async (session) => {
+          this.reconnectAttempts = 0
+          this.lastErrorMessage = null
           if (this.enabled && this.lastActivity) {
             await session.setActivity(this.lastActivity)
           }
         })
         .catch(() => {
+          this.reconnectAttempts++
+          void this.destroySession()
           this.scheduleReconnect()
         })
-    }, delayMs)
+    }, actualDelay)
   }
 
   private clearReconnectTimer(): void {
