@@ -10,10 +10,6 @@ function mod(e: KeyboardEvent): boolean {
   return e.metaKey || e.ctrlKey
 }
 
-/**
- * True when the user is typing in a field where Space/arrows/letters are meaningful.
- * Cmd/Ctrl+chords may still be handled separately by callers.
- */
 export function isTypableTarget(eventTarget: EventTarget | null): boolean {
   if (!eventTarget || !(eventTarget instanceof Element)) return false
   if (eventTarget.closest('[data-loopify-shortcuts="off"]')) {
@@ -88,15 +84,134 @@ export type AppKeyboardShortcutDeps = {
   hasPrevious: boolean
 }
 
-/**
- * Return true if the app handled the key (caller should not run other handlers for the same key).
- */
+type KeyContext = {
+  typable: boolean
+  inOff: boolean
+  onRange: boolean
+  modOnly: boolean
+  hasMod: boolean
+}
+
+function handleMediaKeys(e: KeyboardEvent, d: AppKeyboardShortcutDeps): boolean | undefined {
+  if (isMediaPlayPauseKey(e)) {
+    d.onPlayPause()
+    return true
+  }
+  if (isMediaNextKey(e) && d.hasNext) {
+    d.onNext()
+    return true
+  }
+  if (isMediaPreviousKey(e) && d.hasPrevious) {
+    d.onPrevious()
+    return true
+  }
+  if (isMediaStopKey(e)) {
+    d.onStop()
+    return true
+  }
+  return undefined
+}
+
+function handleGlobalShortcuts(
+  e: KeyboardEvent,
+  ctx: KeyContext,
+  d: AppKeyboardShortcutDeps
+): boolean | undefined {
+  if (!ctx.modOnly) return undefined
+  const key = e.key.toLowerCase()
+  if (key === "k") {
+    d.onOpenSearch()
+    return true
+  }
+  if (e.key === ",") {
+    if (!d.isSettingsOpen) d.onOpenSettings()
+    return true
+  }
+  if (key === "i" && e.shiftKey) {
+    if (!d.isImportOpen) d.onOpenImport()
+    return true
+  }
+  if (key === "l") {
+    d.onToggleQueue()
+    return true
+  }
+  if (key === "b") {
+    d.onToggleSidebar()
+    return true
+  }
+  if (key === "n" && e.shiftKey) {
+    if (!d.playlistActionOpen) d.onNewPlaylist()
+    return true
+  }
+  if (key === "h" && e.shiftKey) {
+    if (d.canShuffleQueue) d.onShuffleQueue()
+    return true
+  }
+  if (key === "x" && e.shiftKey) {
+    d.onStop()
+    return true
+  }
+  if (e.shiftKey && (e.key === "Backspace" || e.key === "Delete")) {
+    d.onClearQueue()
+    return true
+  }
+  return undefined
+}
+
+function handleNavigationKeys(
+  e: KeyboardEvent,
+  ctx: KeyContext,
+  d: AppKeyboardShortcutDeps
+): boolean | undefined {
+  if (ctx.modOnly && e.key === "ArrowLeft") {
+    if (d.hasPrevious) d.onPrevious()
+    return true
+  }
+  if (ctx.modOnly && e.key === "ArrowRight") {
+    if (d.hasNext) d.onNext()
+    return true
+  }
+  if (ctx.hasMod && !e.shiftKey && e.key === "ArrowUp") {
+    d.onVolumeDelta(VOLUME_STEP)
+    return true
+  }
+  if (ctx.hasMod && !e.shiftKey && e.key === "ArrowDown") {
+    d.onVolumeDelta(-VOLUME_STEP)
+    return true
+  }
+  if (
+    ctx.onRange &&
+    (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End")
+  ) {
+    return false
+  }
+  if (!ctx.hasMod && e.key === "ArrowLeft") {
+    d.onSeekRelative(e.shiftKey ? -SEEK_COARSE : -SEEK_FINE)
+    return true
+  }
+  if (!ctx.hasMod && e.key === "ArrowRight") {
+    d.onSeekRelative(e.shiftKey ? SEEK_COARSE : SEEK_FINE)
+    return true
+  }
+  if (e.key === "Home") {
+    d.onSeekToStart()
+    return true
+  }
+  if (e.key === "End") {
+    d.onSeekNearEnd()
+    return true
+  }
+  return undefined
+}
+
 export function handleAppKeyDown(e: KeyboardEvent, d: AppKeyboardShortcutDeps): boolean {
-  const target = e.target
-  const inOff = insideShortcutsOffSubtrees(target)
-  const typable = isTypableTarget(target)
-  const onRange = isRangeSliderTarget(target)
-  const modOnly = mod(e) && !e.altKey
+  const ctx: KeyContext = {
+    typable: isTypableTarget(e.target),
+    inOff: insideShortcutsOffSubtrees(e.target),
+    onRange: isRangeSliderTarget(e.target),
+    modOnly: mod(e) && !e.altKey,
+    hasMod: mod(e),
+  }
 
   const stop = (): boolean => {
     e.preventDefault()
@@ -104,138 +219,30 @@ export function handleAppKeyDown(e: KeyboardEvent, d: AppKeyboardShortcutDeps): 
     return true
   }
 
-  // Space toggles playback only when focus is outside editable fields.
-  if ((e.key === " " || e.code === "Space") && !e.repeat && !typable) {
+  if ((e.key === " " || e.code === "Space") && !e.repeat && !ctx.typable) {
     d.onPlayPause()
     return stop()
   }
 
-  // Media keys work even in typable/off contexts, except range owns bare arrows.
-  if (isMediaPlayPauseKey(e)) {
-    d.onPlayPause()
-    return stop()
-  }
-  if (isMediaNextKey(e) && d.hasNext) {
-    d.onNext()
-    return stop()
-  }
-  if (isMediaPreviousKey(e) && d.hasPrevious) {
-    d.onPrevious()
-    return stop()
-  }
-  if (isMediaStopKey(e)) {
-    d.onStop()
-    return stop()
-  }
+  const mediaResult = handleMediaKeys(e, d)
+  if (mediaResult != null) return stop()
 
-  if (inOff) {
-    if (e.key.toLowerCase() === "k" && modOnly) {
+  if (ctx.inOff) {
+    if (e.key.toLowerCase() === "k" && ctx.modOnly) {
       d.onOpenSearch()
       return stop()
     }
     return false
   }
 
-  // Global shell shortcuts are allowed from typable fields except where noted.
-  if (e.key.toLowerCase() === "k" && modOnly) {
-    d.onOpenSearch()
-    return stop()
-  }
-  if (e.key === "," && modOnly) {
-    if (!d.isSettingsOpen) {
-      d.onOpenSettings()
-    }
-    return stop()
-  }
-  if (e.key.toLowerCase() === "i" && e.shiftKey && modOnly) {
-    if (!d.isImportOpen) {
-      d.onOpenImport()
-    }
-    return stop()
-  }
-  if (e.key.toLowerCase() === "l" && modOnly) {
-    d.onToggleQueue()
-    return stop()
-  }
-  if (e.key.toLowerCase() === "b" && modOnly) {
-    d.onToggleSidebar()
-    return stop()
-  }
-  if (e.key.toLowerCase() === "n" && e.shiftKey && modOnly) {
-    if (!d.playlistActionOpen) {
-      d.onNewPlaylist()
-    }
-    return stop()
-  }
-  if (e.key.toLowerCase() === "h" && e.shiftKey && modOnly) {
-    if (d.canShuffleQueue) {
-      d.onShuffleQueue()
-    }
-    return stop()
-  }
-  if (e.key.toLowerCase() === "x" && e.shiftKey && modOnly) {
-    d.onStop()
-    return stop()
-  }
-  if (e.shiftKey && modOnly) {
-    if (e.key === "Backspace" || e.key === "Delete") {
-      d.onClearQueue()
-      return stop()
-    }
-  }
+  const globalResult = handleGlobalShortcuts(e, ctx, d)
+  if (globalResult != null) return stop()
 
-  // From here: avoid hijacking line/word navigation in text fields.
-  if (typable) {
-    return false
-  }
+  if (ctx.typable) return false
 
-  if (e.key === "ArrowLeft" && mod(e)) {
-    if (d.hasPrevious) {
-      d.onPrevious()
-    }
-    return stop()
-  }
-  if (e.key === "ArrowRight" && mod(e)) {
-    if (d.hasNext) {
-      d.onNext()
-    }
-    return stop()
-  }
-
-  if (e.key === "ArrowUp" && mod(e) && !e.shiftKey) {
-    d.onVolumeDelta(VOLUME_STEP)
-    return stop()
-  }
-  if (e.key === "ArrowDown" && mod(e) && !e.shiftKey) {
-    d.onVolumeDelta(-VOLUME_STEP)
-    return stop()
-  }
-
-  if (
-    onRange &&
-    (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End")
-  ) {
-    return false
-  }
-
-  if (e.key === "ArrowLeft" && !mod(e)) {
-    const delta = e.shiftKey ? -SEEK_COARSE : -SEEK_FINE
-    d.onSeekRelative(delta)
-    return stop()
-  }
-  if (e.key === "ArrowRight" && !mod(e)) {
-    const delta = e.shiftKey ? SEEK_COARSE : SEEK_FINE
-    d.onSeekRelative(delta)
-    return stop()
-  }
-  if (e.key === "Home") {
-    d.onSeekToStart()
-    return stop()
-  }
-  if (e.key === "End") {
-    d.onSeekNearEnd()
-    return stop()
-  }
+  const navResult = handleNavigationKeys(e, ctx, d)
+  if (navResult === false) return false
+  if (navResult === true) return stop()
 
   return false
 }

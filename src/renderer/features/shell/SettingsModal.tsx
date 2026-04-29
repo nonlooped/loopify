@@ -5,6 +5,7 @@ import type { UpdateStatus } from "src/shared/contracts/ipc"
 import type { AppSettings } from "src/shared/types/music"
 import { Button } from "@/components/Button"
 import { TextField } from "@/components/TextField"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { KEYBOARD_SHORTCUTS_HELP } from "@/lib/keyboard-shortcuts"
 import { useAppStore } from "@/stores/app.store"
@@ -52,28 +53,7 @@ export function SettingsModal() {
     return () => window.clearTimeout(t)
   }, [isOpen, settings])
 
-  // Global ESC handler
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, onClose])
-
-  // Backdrop click handler
-  useEffect(() => {
-    if (!isOpen) return
-    const handleClick = (e: MouseEvent) => {
-      if (e.target === backdropRef.current) onClose()
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [isOpen, onClose])
+  useModalDismiss(isOpen, onClose, backdropRef)
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

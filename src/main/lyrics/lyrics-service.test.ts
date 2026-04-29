@@ -50,86 +50,83 @@ test("LyricsService returns cached lyrics without fetching", async () => {
     },
   }
   const cache = createFakeCache(cached)
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => {
-    throw new Error("fetch should not run")
-  }
-  try {
-    const service = new LyricsService(cache)
-    assert.equal(await service.getForTrack(sampleTrack), cached)
-  } finally {
-    globalThis.fetch = originalFetch
-  }
+  await withMockFetch(
+    async () => {
+      throw new Error("fetch should not run")
+    },
+    async () => {
+      const service = new LyricsService(cache)
+      assert.equal(await service.getForTrack(sampleTrack), cached)
+    }
+  )
 })
 
 test("LyricsService falls back to static lyrics when sync data is missing", async () => {
   const cache = createFakeCache(null)
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        id: 1,
-        instrumental: false,
-        plainLyrics: "Plain only",
-        syncedLyrics: null,
-      }),
-      { status: 200 }
-    )
-  try {
-    const service = new LyricsService(cache)
-    const result = await service.getForTrack(sampleTrack)
-    assert.equal(result.status, "static")
-    assert.equal(result.reason, null)
-    assert.equal(result.lyrics.text, "Plain only")
-  } finally {
-    globalThis.fetch = originalFetch
-  }
+  await withMockFetch(
+    async () =>
+      new Response(
+        JSON.stringify({
+          id: 1,
+          instrumental: false,
+          plainLyrics: "Plain only",
+          syncedLyrics: null,
+        }),
+        { status: 200 }
+      ),
+    async () => {
+      const service = new LyricsService(cache)
+      const result = await service.getForTrack(sampleTrack)
+      assert.equal(result.status, "static")
+      assert.equal(result.reason, null)
+      assert.equal(result.lyrics.text, "Plain only")
+    }
+  )
 })
 
 test("LyricsService searches for plain lyrics when exact lookup returns 404", async () => {
   const cache = createFakeCache(null)
-  const originalFetch = globalThis.fetch
   const requests: string[] = []
-  globalThis.fetch = async (input) => {
-    const url =
-      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
-    requests.push(url)
+  await withMockFetch(
+    async (input) => {
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      requests.push(url)
 
-    if (url.startsWith("https://lrclib.net/api/get")) {
-      return new Response(null, { status: 404 })
+      if (url.startsWith("https://lrclib.net/api/get")) {
+        return new Response(null, { status: 404 })
+      }
+
+      if (url.startsWith("https://lrclib.net/api/search")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: 10,
+              trackName: sampleTrack.title,
+              artistName: sampleTrack.artist,
+              duration: 233,
+              instrumental: false,
+              plainLyrics: "Search result lyrics",
+              syncedLyrics: null,
+            },
+          ]),
+          { status: 200 }
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    },
+    async () => {
+      const service = new LyricsService(cache)
+      const result = await service.getForTrack(sampleTrack)
+      assert.equal(result.status, "static")
+      assert.equal(result.reason, null)
+      assert.equal(result.lyrics.text, "Search result lyrics")
+      assert.equal(requests.length, 2)
+      assert.match(requests[0], /\/api\/get/)
+      assert.match(requests[1], /\/api\/search/)
     }
-
-    if (url.startsWith("https://lrclib.net/api/search")) {
-      return new Response(
-        JSON.stringify([
-          {
-            id: 10,
-            trackName: sampleTrack.title,
-            artistName: sampleTrack.artist,
-            duration: 233,
-            instrumental: false,
-            plainLyrics: "Search result lyrics",
-            syncedLyrics: null,
-          },
-        ]),
-        { status: 200 }
-      )
-    }
-
-    throw new Error(`Unexpected request: ${url}`)
-  }
-  try {
-    const service = new LyricsService(cache)
-    const result = await service.getForTrack(sampleTrack)
-    assert.equal(result.status, "static")
-    assert.equal(result.reason, null)
-    assert.equal(result.lyrics.text, "Search result lyrics")
-    assert.equal(requests.length, 2)
-    assert.match(requests[0], /\/api\/get/)
-    assert.match(requests[1], /\/api\/search/)
-  } finally {
-    globalThis.fetch = originalFetch
-  }
+  )
 })
 
 test("createLyricsCacheKey normalizes stable track identity", () => {
@@ -143,6 +140,19 @@ test("createLyricsCacheKey normalizes stable track identity", () => {
     })
   )
 })
+
+async function withMockFetch(
+  mockFetch: (input: RequestInfo | URL) => Promise<Response>,
+  fn: () => Promise<void>
+): Promise<void> {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = mockFetch
+  try {
+    await fn()
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+}
 
 function createFakeCache(initial: LyricsState | null): LyricsCacheRepository {
   const state = { value: initial }

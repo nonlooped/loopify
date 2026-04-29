@@ -1,14 +1,10 @@
 import { Captions, Loader2 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
-import type { LyricsState, PlayerTrack, SyncedLyricLine } from "src/shared/types/music"
+import type { PlayerTrack } from "src/shared/types/music"
 import { EmptyState } from "@/components/EmptyState"
+import { useLyricsAutoScroll } from "@/hooks/useLyricsAutoScroll"
+import { useActiveLyricIndex, useLyricsData } from "@/hooks/useLyricsData"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
-
-type LyricsLoadState =
-  | { phase: "idle"; result: null }
-  | { phase: "loading"; result: null }
-  | { phase: "ready"; result: LyricsState }
 
 type SyncedLyricsViewProps = {
   track: PlayerTrack | null
@@ -17,107 +13,12 @@ type SyncedLyricsViewProps = {
 }
 
 export function SyncedLyricsView({ track, positionSeconds, onSeek }: SyncedLyricsViewProps) {
-  const [loadState, setLoadState] = useState<LyricsLoadState>({ phase: "idle", result: null })
-  const scrollRootRef = useRef<HTMLElement | null>(null)
-  const userScrollUntilRef = useRef(0)
-  const scrollTimerRef = useRef<number | null>(null)
+  const { loadState, lines, staticLyrics, hasTrack } = useLyricsData(track)
   const reducedMotion = usePrefersReducedMotion()
-  const trackTitle = track?.title ?? null
-  const trackArtist = track?.artist ?? null
-  const trackAlbum = track?.album ?? null
-  const trackDurationMs = track?.durationMs ?? null
-  const trackThumbnailUrl = track?.thumbnailUrl ?? null
-  const trackCanonicalUrl = track?.canonicalUrl ?? null
-  const trackProvider = track?.provider ?? null
+  const activeIndex = useActiveLyricIndex(lines, positionSeconds)
+  const { scrollRootRef, handleScroll } = useLyricsAutoScroll(activeIndex, reducedMotion)
 
-  useEffect(() => {
-    if (!trackTitle || !trackCanonicalUrl || !trackProvider) {
-      setLoadState({ phase: "idle", result: null })
-      return
-    }
-
-    let cancelled = false
-    setLoadState({ phase: "loading", result: null })
-    window.loopify.lyrics
-      .getForTrack({
-        title: trackTitle,
-        artist: trackArtist,
-        album: trackAlbum,
-        durationMs: trackDurationMs,
-        thumbnailUrl: trackThumbnailUrl,
-        canonicalUrl: trackCanonicalUrl,
-        provider: trackProvider,
-      })
-      .then((result) => {
-        if (!cancelled) {
-          setLoadState({ phase: "ready", result })
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setLoadState({
-            phase: "ready",
-            result: {
-              status: "error",
-              lyrics: null,
-              reason: error instanceof Error ? error.message : "Could not load synced lyrics.",
-            },
-          })
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [
-    trackAlbum,
-    trackArtist,
-    trackCanonicalUrl,
-    trackDurationMs,
-    trackProvider,
-    trackThumbnailUrl,
-    trackTitle,
-  ])
-
-  const lines = loadState.result?.status === "synced" ? loadState.result.lyrics.lines : []
-  const activeIndex = useMemo(
-    () => findActiveLyricIndex(lines, positionSeconds),
-    [lines, positionSeconds]
-  )
-  const staticLyrics = loadState.result?.status === "static" ? loadState.result.lyrics.text : null
-
-  useEffect(() => {
-    if (activeIndex < 0 || Date.now() < userScrollUntilRef.current) {
-      return
-    }
-    const root = scrollRootRef.current
-    const active = root?.querySelector<HTMLElement>("[data-active='true']")
-    active?.scrollIntoView({
-      block: "center",
-      behavior: reducedMotion ? "auto" : "smooth",
-    })
-  }, [activeIndex, reducedMotion])
-
-  const handleScroll = () => {
-    userScrollUntilRef.current = Date.now() + 2500
-    if (scrollTimerRef.current != null) {
-      window.clearTimeout(scrollTimerRef.current)
-    }
-    scrollTimerRef.current = window.setTimeout(() => {
-      userScrollUntilRef.current = 0
-      scrollTimerRef.current = null
-    }, 2500)
-  }
-
-  useEffect(() => {
-    return () => {
-      if (scrollTimerRef.current != null) {
-        window.clearTimeout(scrollTimerRef.current)
-      }
-    }
-  }, [])
-
-  if (!trackTitle || !trackCanonicalUrl || !trackProvider) {
+  if (!hasTrack) {
     return <LyricsEmptyState title="No track" message="Start playback to show synced lyrics." />
   }
 
@@ -227,21 +128,6 @@ function StaticLyricsView({ text }: { text: string | null }) {
       </div>
     </section>
   )
-}
-
-function findActiveLyricIndex(lines: SyncedLyricLine[], positionSeconds: number): number {
-  if (lines.length === 0) {
-    return -1
-  }
-  let active = -1
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].timeSeconds <= positionSeconds + 0.12) {
-      active = i
-    } else {
-      break
-    }
-  }
-  return active
 }
 
 function formatLyricTime(seconds: number): string {

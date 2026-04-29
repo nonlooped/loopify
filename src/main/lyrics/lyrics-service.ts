@@ -43,6 +43,14 @@ export class LyricsService {
     })
   }
 
+  private async lrclibFetch(url: URL, track: PlayerTrack): Promise<Response> {
+    if (track.artist?.trim()) url.searchParams.set("artist_name", track.artist)
+    if (track.durationMs && track.durationMs > 0) {
+      url.searchParams.set("duration", String(Math.round(track.durationMs / 1000)))
+    }
+    return fetch(url, { headers: { "User-Agent": "Loopify/0.1.0" } })
+  }
+
   private async fetchSyncedLyrics(track: PlayerTrack, fetchedAt: number): Promise<LyricsState> {
     if (!track.title.trim() || !track.artist?.trim()) {
       return {
@@ -55,19 +63,11 @@ export class LyricsService {
     try {
       const url = new URL(LRCLIB_ENDPOINT)
       url.searchParams.set("track_name", track.title)
-      url.searchParams.set("artist_name", track.artist)
       if (track.album?.trim()) {
         url.searchParams.set("album_name", track.album)
       }
-      if (track.durationMs && track.durationMs > 0) {
-        url.searchParams.set("duration", String(Math.round(track.durationMs / 1000)))
-      }
 
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "Loopify/0.1.0",
-        },
-      })
+      const response = await this.lrclibFetch(url, track)
 
       if (response.status === 404) {
         return this.searchFallbackLyrics(track, fetchedAt)
@@ -94,18 +94,8 @@ export class LyricsService {
   private async searchFallbackLyrics(track: PlayerTrack, fetchedAt: number): Promise<LyricsState> {
     const url = new URL(LRCLIB_SEARCH_ENDPOINT)
     url.searchParams.set("q", [track.title, track.artist].filter(Boolean).join(" "))
-    if (track.artist?.trim()) {
-      url.searchParams.set("artist_name", track.artist)
-    }
-    if (track.durationMs && track.durationMs > 0) {
-      url.searchParams.set("duration", String(Math.round(track.durationMs / 1000)))
-    }
 
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Loopify/0.1.0",
-      },
-    })
+    const response = await this.lrclibFetch(url, track)
 
     if (!response.ok) {
       return {

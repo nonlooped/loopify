@@ -3,6 +3,7 @@ import { Download, ExternalLink, Heart, Loader2, Play, Plus, Search, X } from "l
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { CatalogTrack, TrackCandidate } from "src/shared/types/music"
 import { useDebouncedCallback } from "use-debounce"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
@@ -67,28 +68,7 @@ export function CommandPalette() {
     }
   }, [isOpen])
 
-  // Global ESC handler
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, onClose])
-
-  // Backdrop click handler
-  useEffect(() => {
-    if (!isOpen) return
-    const handleClick = (e: MouseEvent) => {
-      if (e.target === backdropRef.current) onClose()
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [isOpen, onClose])
+  useModalDismiss(isOpen, onClose, backdropRef)
 
   const performSearch = useCallback(async (text: string) => {
     if (!text.trim()) {

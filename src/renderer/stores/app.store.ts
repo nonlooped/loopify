@@ -81,6 +81,16 @@ function patchTrackInQueue(queue: QueueItem[], updatedTrack: Track): QueueItem[]
   )
 }
 
+function patchTrackEverywhere(
+  state: { queue: QueueItem[]; playlists: Playlist[] },
+  updatedTrack: Track
+): { queue: QueueItem[]; playlists: Playlist[] } {
+  return {
+    queue: patchTrackInQueue(state.queue, updatedTrack),
+    playlists: patchTrackInPlaylists(state.playlists, updatedTrack),
+  }
+}
+
 function nextRepeatMode(mode: RepeatMode): RepeatMode {
   if (mode === "off") return "one"
   if (mode === "one") return "all"
@@ -659,10 +669,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   handleDownloadTrack: async (track) => {
     try {
       const updatedTrack = await window.loopify.downloads.downloadTrack(track.id)
-      set((state) => ({
-        queue: patchTrackInQueue(state.queue, updatedTrack),
-        playlists: patchTrackInPlaylists(state.playlists, updatedTrack),
-      }))
+      set((state) => patchTrackEverywhere(state, updatedTrack))
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not start that download.") })
@@ -683,10 +690,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   handleRemoveTrackDownload: async (track) => {
     try {
       const updatedTrack = await window.loopify.downloads.removeTrackDownload(track.id)
-      set((state) => ({
-        queue: patchTrackInQueue(state.queue, updatedTrack),
-        playlists: patchTrackInPlaylists(state.playlists, updatedTrack),
-      }))
+      set((state) => patchTrackEverywhere(state, updatedTrack))
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not remove that local file.") })

@@ -218,8 +218,3 @@ export type AppSettings = {
   /** Share active playback to Discord via Rich Presence. */
   discordPresenceEnabled: boolean
 }
-
-export type ResolverError = {
-  code: ResolverFailureCode
-  message: string
-}

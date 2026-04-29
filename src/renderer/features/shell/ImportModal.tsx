@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/Button"
 import { ModalFrame } from "@/components/ModalFrame"
 import { TextField } from "@/components/TextField"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { useAppStore } from "@/stores/app.store"
 import type { ImportJob } from "../../../shared/types/music"
@@ -44,28 +45,7 @@ export function ImportModal() {
     }
   }, [isOpen])
 
-  // Global ESC handler
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, onClose])
-
-  // Backdrop click handler
-  useEffect(() => {
-    if (!isOpen) return
-    const handleClick = (e: MouseEvent) => {
-      if (e.target === backdropRef.current) onClose()
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [isOpen, onClose])
+  useModalDismiss(isOpen, onClose, backdropRef)
 
   const importInFlight =
     isStarting ||

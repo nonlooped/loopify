@@ -88,6 +88,12 @@ export async function searchCatalog(rawQuery: string): Promise<CatalogTrack[]> {
   return ranked
 }
 
+async function fetchCatalog(url: URL, provider: string): Promise<Response> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+  if (!res.ok) throw new Error(`${provider} search returned ${res.status}`)
+  return res
+}
+
 async function searchItunes(query: string): Promise<CatalogTrack[]> {
   const url = new URL("https://itunes.apple.com/search")
   url.searchParams.set("term", query)
@@ -95,9 +101,7 @@ async function searchItunes(query: string): Promise<CatalogTrack[]> {
   url.searchParams.set("media", "music")
   url.searchParams.set("limit", String(PER_PROVIDER_LIMIT))
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-  if (!res.ok) throw new Error(`iTunes search returned ${res.status}`)
-
+  const res = await fetchCatalog(url, "iTunes")
   const data = (await res.json()) as { results?: ItunesResult[] }
   const out: CatalogTrack[] = []
   for (const r of data.results ?? []) {
@@ -121,8 +125,7 @@ async function searchDeezer(query: string): Promise<CatalogTrack[]> {
   url.searchParams.set("q", query)
   url.searchParams.set("limit", String(PER_PROVIDER_LIMIT))
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-  if (!res.ok) throw new Error(`Deezer search returned ${res.status}`)
+  const res = await fetchCatalog(url, "Deezer")
 
   const data = (await res.json()) as { data?: DeezerResult[] }
   const out: CatalogTrack[] = []

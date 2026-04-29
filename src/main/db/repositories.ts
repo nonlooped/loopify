@@ -963,6 +963,23 @@ export class LyricsCacheRepository {
 export class ImportRepository {
   constructor(private readonly db: DatabaseConnection) {}
 
+  private jobParams(job: ImportJob): (string | number | null)[] {
+    return [
+      job.targetPlaylistId,
+      job.playlistTitle,
+      job.status,
+      job.phase,
+      job.sourceKind,
+      job.total,
+      job.completed,
+      job.failed,
+      job.matched,
+      job.skipped,
+      job.truncated ? 1 : 0,
+      job.sourceTrackCount,
+    ]
+  }
+
   create(inputUrl: string, targetPlaylistId: string | null): ImportJob {
     const job: ImportJob = {
       id: id("imp"),
@@ -990,18 +1007,7 @@ export class ImportRepository {
       .run(
         job.id,
         job.inputUrl,
-        job.targetPlaylistId,
-        job.playlistTitle,
-        job.status,
-        job.phase,
-        job.sourceKind,
-        job.total,
-        job.completed,
-        job.failed,
-        job.matched,
-        job.skipped,
-        job.truncated ? 1 : 0,
-        job.sourceTrackCount,
+        ...this.jobParams(job),
         job.createdAt,
         job.finishedAt,
         job.errorMessage
@@ -1014,23 +1020,7 @@ export class ImportRepository {
       .prepare(
         "update imports set target_playlist_id = ?, playlist_title = ?, status = ?, phase = ?, source_kind = ?, total = ?, completed = ?, failed = ?, matched = ?, skipped = ?, truncated = ?, source_track_count = ?, finished_at = ?, error_message = ? where id = ?"
       )
-      .run(
-        job.targetPlaylistId,
-        job.playlistTitle,
-        job.status,
-        job.phase,
-        job.sourceKind,
-        job.total,
-        job.completed,
-        job.failed,
-        job.matched,
-        job.skipped,
-        job.truncated ? 1 : 0,
-        job.sourceTrackCount,
-        job.finishedAt,
-        job.errorMessage,
-        job.id
-      )
+      .run(...this.jobParams(job), job.finishedAt, job.errorMessage, job.id)
     return job
   }
 
