@@ -14,6 +14,7 @@ import {
   Play,
   Plus,
   Search,
+  Shuffle,
   Trash2,
 } from "lucide-react"
 import { memo, useCallback, useMemo, useRef, useState } from "react"
@@ -69,6 +70,8 @@ export function Workspace() {
   const handleDownloadPlaylist = useAppStore((s) => s.handleDownloadPlaylist)
   const handleAddTrackToPlaylist = useAppStore((s) => s.handleAddTrackToPlaylist)
   const handleCreatePlaylist = useAppStore((s) => s.handleCreatePlaylist)
+  const playlistShuffleIds = useAppStore((s) => s.playlistShuffleIds)
+  const togglePlaylistShuffle = useAppStore((s) => s.togglePlaylistShuffle)
   const activePlaylist = useMemo(
     () => playlists.find((p) => p.id === activePlaylistId) || null,
     [playlists, activePlaylistId]
@@ -376,6 +379,20 @@ export function Workspace() {
                     Play All
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  onClick={() => togglePlaylistShuffle(activePlaylist.id)}
+                  disabled={!hasTracks}
+                  className={cn(
+                    "gap-2",
+                    playlistShuffleIds.has(activePlaylist.id) && "text-accent bg-white/5"
+                  )}
+                  title={playlistShuffleIds.has(activePlaylist.id) ? "Shuffle on" : "Shuffle off"}
+                >
+                  <Shuffle className="h-4 w-4" />
+                  Shuffle
+                </Button>
                 {handleEnqueuePlaylist && (
                   <Button
                     variant="ghost"

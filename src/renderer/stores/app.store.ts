@@ -34,6 +34,17 @@ function sumPlaylistDurationMs(tracks: { durationMs: number | null }[] | undefin
   return tracks.reduce((sum, t) => sum + (t.durationMs ?? 0), 0)
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const temp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = temp
+  }
+  return arr
+}
+
 function withSystemFlagIfNeeded(playlist: Playlist, patch: Partial<Playlist>): Playlist {
   const next = { ...playlist, ...patch } as Playlist
   return isSystemPlaylistId(next.id) ? { ...next, isSystem: true } : next
@@ -148,6 +159,8 @@ export interface AppState {
   handlePlayPlaylist: (playlist: Playlist) => Promise<void>
   handleEnqueuePlaylist: (playlist: Playlist) => Promise<void>
   handleShuffleQueue: () => Promise<void>
+  playlistShuffleIds: Set<string>
+  togglePlaylistShuffle: (id: string) => void
   queueOnPlay: (item: QueueItem) => Promise<void>
   queueOnRemove: (id: string) => Promise<void>
   queueOnClear: () => Promise<void>
@@ -205,6 +218,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   actionError: null,
   shellReveal: false,
   isCompactShell: false,
+  playlistShuffleIds: new Set(),
 
   lastPlayerState: null,
 
@@ -509,7 +523,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
   handlePlayPlaylist: async (playlist) => {
     if (!playlist.tracks || playlist.tracks.length === 0) return
     try {
-      const sourceUrls = playlist.tracks.map((t) => t.canonicalUrl)
+      let sourceUrls = playlist.tracks.map((t) => t.canonicalUrl)
+      const { playlistShuffleIds } = get()
+      if (playlistShuffleIds.has(playlist.id)) {
+        sourceUrls = shuffleArray(sourceUrls)
+      }
       const next = await window.loopify.queue.addMany({ sourceUrls, playFromStart: true })
       set({ queue: next })
       await get().refreshPlaylists()
@@ -541,6 +559,17 @@ export const useAppStore = create<AppState>()((set, get) => ({
       console.error("Failed to shuffle queue:", err)
       set({ actionError: formatActionError(err, "Could not shuffle the queue.") })
     }
+  },
+
+  togglePlaylistShuffle: (id) => {
+    const { playlistShuffleIds } = get()
+    const next = new Set(playlistShuffleIds)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    set({ playlistShuffleIds: next })
   },
 
   queueOnPlay: async (item) => {
