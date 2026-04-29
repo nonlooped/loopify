@@ -1,4 +1,6 @@
+import { LRUCache } from "lru-cache"
 import type { CatalogTrack } from "../../shared/types/music"
+import { normalize, tokenize } from "../../shared/utils/string"
 
 const REQUEST_TIMEOUT_MS = 6_000
 const PER_PROVIDER_LIMIT = 15
@@ -6,7 +8,10 @@ const RETURN_LIMIT = 12
 
 const RESULT_CACHE_TTL_MS = 10 * 60 * 1000
 const RESULT_CACHE_MAX_ENTRIES = 200
-const resultCache = new Map<string, { results: CatalogTrack[]; expiresAt: number }>()
+const resultCache = new LRUCache<string, CatalogTrack[]>({
+  ttl: RESULT_CACHE_TTL_MS,
+  max: RESULT_CACHE_MAX_ENTRIES,
+})
 
 function cacheKey(query: string): string {
   return query.toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim()
@@ -14,24 +19,11 @@ function cacheKey(query: string): string {
 
 function getCachedResults(key: string): CatalogTrack[] | null {
   const entry = resultCache.get(key)
-  if (!entry) return null
-  if (entry.expiresAt <= Date.now()) {
-    resultCache.delete(key)
-    return null
-  }
-  // refresh insertion order so frequently-used queries survive eviction
-  resultCache.delete(key)
-  resultCache.set(key, entry)
-  return entry.results
+  return entry ?? null
 }
 
 function setCachedResults(key: string, results: CatalogTrack[]): void {
-  resultCache.set(key, { results, expiresAt: Date.now() + RESULT_CACHE_TTL_MS })
-  while (resultCache.size > RESULT_CACHE_MAX_ENTRIES) {
-    const oldest = resultCache.keys().next().value
-    if (oldest === undefined) break
-    resultCache.delete(oldest)
-  }
+  resultCache.set(key, results)
 }
 
 type ItunesResult = {
@@ -167,18 +159,6 @@ function dedupe(tracks: CatalogTrack[]): CatalogTrack[] {
     out.push(t)
   }
   return out
-}
-
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\(.*?\)|\[.*?\]/g, " ")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-}
-
-function tokenize(value: string): string[] {
-  return normalize(value).split(" ").filter(Boolean)
 }
 
 /** Cover/karaoke/instrumental variants that should rank last. */

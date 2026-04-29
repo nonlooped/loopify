@@ -1,3 +1,4 @@
+import pLimit from "p-limit"
 import type { TrackCandidate } from "../../shared/types/music"
 import { normalize, tokenList } from "../../shared/utils/string"
 import { searchCatalog } from "../catalog/catalog-search"
@@ -193,23 +194,27 @@ export async function matchAllSpotifyRows(
   let processed = 0
   let matched = 0
   let skipped = 0
-  for (let i = 0; i < rows.length; i += concurrency) {
-    const batch = rows.slice(i, i + concurrency)
-    const part = await Promise.all(
-      batch.map((r) => matchSpotifyRowToCandidate(resolver, r, threshold, metadata))
+  let emittedAt = 0
+  const limit = pLimit(concurrency)
+  const tasks = rows.map((row) =>
+    limit(() =>
+      matchSpotifyRowToCandidate(resolver, row, threshold, metadata).then((c) => {
+        processed += 1
+        if (c) {
+          matched += 1
+          out.push(c)
+        } else {
+          skipped += 1
+        }
+        if (processed - emittedAt >= concurrency || processed === rows.length) {
+          emittedAt = processed
+          onRow({ processed, matched, skipped })
+        }
+        return c
+      })
     )
-    for (let j = 0; j < part.length; j++) {
-      const c = part[j]
-      processed += 1
-      if (c) {
-        matched += 1
-        out.push(c)
-      } else {
-        skipped += 1
-      }
-    }
-    onRow({ processed, matched, skipped })
-  }
+  )
+  await Promise.all(tasks)
   return out
 }
 

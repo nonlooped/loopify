@@ -1,247 +1,98 @@
-import { mkdirSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
+import { join } from "node:path"
 import Database from "better-sqlite3"
+import { drizzle } from "drizzle-orm/better-sqlite3"
+import { migrate } from "drizzle-orm/better-sqlite3/migrator"
 import { app } from "electron"
+import * as schema from "./schema"
 
 export type DatabaseConnection = Database.Database
 
 export function createDatabase(): DatabaseConnection {
   const dir = join(app.getPath("userData"), "data")
   mkdirSync(dir, { recursive: true })
-  const db = new Database(join(dir, "loopify.db"))
+  const dbPath = join(dir, "loopify.db")
+
+  const db = new Database(dbPath)
   db.pragma("journal_mode = WAL")
   db.pragma("foreign_keys = ON")
+
   runMigrations(db)
+
   return db
 }
 
+export function createDrizzleDatabase(db: DatabaseConnection) {
+  return drizzle(db, { schema })
+}
+
 function runMigrations(db: DatabaseConnection): void {
+  const dbDir = join(app.getPath("userData"), "data")
+  const migrationsDir = join(dbDir, "migrations")
+
+  const sourceMigrationsDir = join(app.getAppPath(), "drizzle", "migrations")
+
+  baselineExistingDatabase(db)
+
+  if (existsSync(sourceMigrationsDir)) {
+    mkdirSync(migrationsDir, { recursive: true })
+    const files = readdirSync(sourceMigrationsDir)
+    for (const file of files) {
+      const sourcePath = join(sourceMigrationsDir, file)
+      const destPath = join(migrationsDir, file)
+      copyFileSync(sourcePath, destPath)
+    }
+  }
+
+  const drizzleDb = drizzle(db, { schema })
+  migrate(drizzleDb, { migrationsFolder: migrationsDir })
+}
+
+function baselineExistingDatabase(db: DatabaseConnection): void {
+  const hasDrizzleMigrations = db
+    .prepare(
+      "select count(*) as cnt from sqlite_master where type = 'table' and name = '__drizzle_migrations'"
+    )
+    .get() as { cnt: number }
+
+  if (hasDrizzleMigrations.cnt > 0) return
+
+  const hasTracks = db
+    .prepare("select count(*) as cnt from sqlite_master where type = 'table' and name = 'tracks'")
+    .get() as { cnt: number }
+
+  if (hasTracks.cnt === 0) return
+
   db.exec(`
-    create table if not exists tracks (
-      id text primary key,
-      title text not null,
-      artist text,
-      album text,
-      duration_ms integer,
-      thumbnail_url text,
-      canonical_url text not null,
-      provider text not null,
-      liked_at integer,
-      download_status text not null default 'not-downloaded',
-      download_progress integer not null default 0,
-      downloaded_file_path text,
-      download_error text,
-      downloaded_at integer,
-      created_at integer not null,
-      updated_at integer not null
-    );
-    create table if not exists track_sources (
-      id text primary key,
-      track_id text not null references tracks(id) on delete cascade,
-      provider text not null,
-      source_url text not null unique,
-      source_id text,
-      extractor text,
-      last_resolved_at integer,
-      last_status text not null default 'new'
-    );
-    create table if not exists resolver_cache (
-      id text primary key,
-      source_url text not null,
-      provider text not null,
-      stream_url text,
-      metadata_json text,
-      expires_at integer,
-      stream_expires_at integer,
-      failure_code text,
-      failure_message text,
-      created_at integer not null,
-      updated_at integer not null
-    );
-    create table if not exists playlists (
-      id text primary key,
-      name text not null,
-      description text,
-      sort_order integer not null default 0,
-      created_at integer not null,
-      updated_at integer not null
-    );
-    create table if not exists playlist_tracks (
-      id text primary key,
-      playlist_id text not null references playlists(id) on delete cascade,
-      track_id text not null references tracks(id) on delete cascade,
-      sort_order integer not null default 0,
-      added_at integer not null,
-      added_from text
-    );
-    create table if not exists queue_items (
-      id text primary key,
-      track_id text references tracks(id) on delete set null,
-      source_url text not null,
-      sort_order integer not null default 0,
-      status text not null default 'queued',
-      created_at integer not null
-    );
-    create table if not exists imports (
-      id text primary key,
-      input_url text not null,
-      target_playlist_id text references playlists(id) on delete set null,
-      playlist_title text,
-      status text not null,
-      phase text not null default 'queued',
-      source_kind text,
-      total integer not null default 0,
-      completed integer not null default 0,
-      failed integer not null default 0,
-      matched integer not null default 0,
-      skipped integer not null default 0,
-      truncated integer not null default 0,
-      source_track_count integer,
-      created_at integer not null,
-      finished_at integer,
-      error_message text
-    );
-    create table if not exists import_items (
-      id text primary key,
-      import_id text not null references imports(id) on delete cascade,
-      source_url text not null,
-      track_id text references tracks(id) on delete set null,
-      status text not null,
-      error text
-    );
-    create table if not exists play_history (
-      id text primary key,
-      track_id text references tracks(id) on delete set null,
-      source_url text not null,
-      played_at integer not null,
-      completed integer not null default 0
-    );
-    create table if not exists lyrics_cache (
-      id text primary key,
-      track_title text not null,
-      artist text,
-      album text,
-      duration_ms integer,
-      canonical_url text not null,
-      provider text not null,
-      status text not null,
-      source text,
-      provider_track_id text,
-      synced_lyrics_json text,
-      error_message text,
-      fetched_at integer not null
-    );
-    create table if not exists settings (
-      key text primary key,
-      value text not null,
-      updated_at integer not null
-    );
+    create table if not exists __drizzle_migrations (
+      id integer primary key autoincrement,
+      hash text not null,
+      created_at integer
+    )
   `)
 
-  createIndexes(db)
-  ensureImportsColumns(db)
-  ensureTrackColumns(db)
-  ensureResolverCacheStreamColumns(db)
-  ensureLyricsCacheTable(db)
+  const INITIAL_MIGRATION_HASH = "3f2abf49ea81d083196bc3f9d29efffd93c9c24ebf75e9fc7a358b8f0692f34e"
+  const INITIAL_MIGRATION_TIMESTAMP = 1777490806125
 
-  const dbDir = dirname(db.name)
-  mkdirSync(dbDir, { recursive: true })
+  db.prepare("insert into __drizzle_migrations (hash, created_at) values (?, ?)").run(
+    INITIAL_MIGRATION_HASH,
+    INITIAL_MIGRATION_TIMESTAMP
+  )
 }
 
-function createIndexes(db: DatabaseConnection): void {
-  db.exec(`
-    create index if not exists idx_tracks_canonical_url on tracks(canonical_url);
-    create index if not exists idx_tracks_liked_at on tracks(liked_at) where liked_at is not null;
-    create index if not exists idx_tracks_download_status on tracks(download_status) where download_status = 'downloaded';
-    create index if not exists idx_track_sources_track_id on track_sources(track_id);
-    create index if not exists idx_resolver_cache_source_url on resolver_cache(source_url);
-    create index if not exists idx_playlist_tracks_playlist_id on playlist_tracks(playlist_id, sort_order, added_at);
-    create index if not exists idx_queue_items_sort_order on queue_items(sort_order, created_at);
-    create index if not exists idx_imports_status on imports(status);
-    create index if not exists idx_lyrics_cache_id on lyrics_cache(id);
-  `)
-}
+export function deleteDatabase(): void {
+  const dir = join(app.getPath("userData"), "data")
+  const dbPath = join(dir, "loopify.db")
+  const walPath = `${dbPath}-wal`
+  const shmPath = `${dbPath}-shm`
 
-function ensureTrackColumns(db: DatabaseConnection): void {
-  const columns = db.prepare("pragma table_info(tracks)").all() as { name: string }[]
-  const names = new Set(columns.map((c) => c.name))
-  if (!names.has("liked_at")) {
-    db.exec("alter table tracks add column liked_at integer")
+  if (existsSync(dbPath)) {
+    rmSync(dbPath, { force: true })
   }
-  if (!names.has("download_status")) {
-    db.exec("alter table tracks add column download_status text not null default 'not-downloaded'")
+  if (existsSync(walPath)) {
+    rmSync(walPath, { force: true })
   }
-  if (!names.has("download_progress")) {
-    db.exec("alter table tracks add column download_progress integer not null default 0")
+  if (existsSync(shmPath)) {
+    rmSync(shmPath, { force: true })
   }
-  if (!names.has("downloaded_file_path")) {
-    db.exec("alter table tracks add column downloaded_file_path text")
-  }
-  if (!names.has("download_error")) {
-    db.exec("alter table tracks add column download_error text")
-  }
-  if (!names.has("downloaded_at")) {
-    db.exec("alter table tracks add column downloaded_at integer")
-  }
-}
-
-function ensureImportsColumns(db: DatabaseConnection): void {
-  const columns = db.prepare("pragma table_info(imports)").all() as { name: string }[]
-  const names = new Set(columns.map((c) => c.name))
-  if (!names.has("playlist_title")) {
-    db.exec("alter table imports add column playlist_title text")
-  }
-  if (!names.has("error_message")) {
-    db.exec("alter table imports add column error_message text")
-  }
-  if (!names.has("phase")) {
-    db.exec("alter table imports add column phase text default 'queued'")
-    db.exec("update imports set phase = 'done' where status = 'done'")
-    db.exec("update imports set phase = 'failed' where status = 'failed'")
-    db.exec("update imports set phase = 'queued' where status = 'queued'")
-    db.exec("update imports set phase = 'running' where status = 'running'")
-  }
-  if (!names.has("source_kind")) {
-    db.exec("alter table imports add column source_kind text")
-  }
-  if (!names.has("matched")) {
-    db.exec("alter table imports add column matched integer not null default 0")
-  }
-  if (!names.has("skipped")) {
-    db.exec("alter table imports add column skipped integer not null default 0")
-  }
-  if (!names.has("truncated")) {
-    db.exec("alter table imports add column truncated integer not null default 0")
-  }
-  if (!names.has("source_track_count")) {
-    db.exec("alter table imports add column source_track_count integer")
-  }
-}
-
-function ensureResolverCacheStreamColumns(db: DatabaseConnection): void {
-  const columns = db.prepare("pragma table_info(resolver_cache)").all() as { name: string }[]
-  const names = new Set(columns.map((c) => c.name))
-  if (!names.has("stream_expires_at")) {
-    db.exec("alter table resolver_cache add column stream_expires_at integer")
-  }
-}
-
-function ensureLyricsCacheTable(db: DatabaseConnection): void {
-  db.exec(`
-    create table if not exists lyrics_cache (
-      id text primary key,
-      track_title text not null,
-      artist text,
-      album text,
-      duration_ms integer,
-      canonical_url text not null,
-      provider text not null,
-      status text not null,
-      source text,
-      provider_track_id text,
-      synced_lyrics_json text,
-      error_message text,
-      fetched_at integer not null
-    );
-  `)
 }

@@ -4,7 +4,7 @@ import { is } from "@electron-toolkit/utils"
 import { app, BrowserWindow, Menu } from "electron"
 import log from "electron-log/main.js"
 import { ipcChannels } from "../shared/contracts/ipc"
-import { createDatabase, type DatabaseConnection } from "./db/database"
+import { createDatabase, createDrizzleDatabase, type DatabaseConnection } from "./db/database"
 import {
   ImportRepository,
   LibraryRepository,
@@ -80,14 +80,15 @@ async function createWindow(): Promise<void> {
 
   const db = createDatabase()
   dbConnection = db
-  const settings = new SettingsRepository(db)
-  const library = new LibraryRepository(db)
-  const queue = new QueueRepository(db)
+  const drizzleDb = createDrizzleDatabase(db)
+  const settings = new SettingsRepository(drizzleDb)
+  const library = new LibraryRepository(drizzleDb)
+  const queue = new QueueRepository(drizzleDb)
   queue.clear()
   queueRepository = queue
-  const resolverCache = new ResolverCacheRepository(db)
+  const resolverCache = new ResolverCacheRepository(drizzleDb)
   const resolver = new ResolverService(settings, resolverCache)
-  const lyrics = new LyricsService(new LyricsCacheRepository(db))
+  const lyrics = new LyricsService(new LyricsCacheRepository(drizzleDb))
   player = new PlayerService(settings)
   const updater = new UpdaterService()
   presence = new DiscordPresenceService({
@@ -95,7 +96,7 @@ async function createWindow(): Promise<void> {
     enabled: settings.get().discordPresenceEnabled,
   })
   const imports = new ImportService(
-    new ImportRepository(db),
+    new ImportRepository(drizzleDb),
     library,
     resolver,
     settings,

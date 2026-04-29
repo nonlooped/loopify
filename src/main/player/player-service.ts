@@ -131,6 +131,15 @@ export class PlayerService extends EventEmitter {
   }
 
   shutdown(): void {
+    for (const [, pending] of this.pendingCommands) {
+      clearTimeout(pending.timer)
+      pending.reject(new Error("Player shutdown"))
+    }
+    this.pendingCommands.clear()
+    if (this.emitTimer) {
+      clearTimeout(this.emitTimer)
+      this.emitTimer = null
+    }
     if (this.socket && !this.socket.destroyed) {
       this.socket.write(`${JSON.stringify({ command: ["quit"] })}\n`)
     }

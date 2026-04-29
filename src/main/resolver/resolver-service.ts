@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process"
 import ms from "ms"
+import pLimit from "p-limit"
 import type {
   CatalogTrack,
   Provider,
@@ -10,7 +11,10 @@ import { searchCatalog } from "../catalog/catalog-search"
 import type { ResolverCacheRepository, SettingsRepository } from "../db/repositories"
 import { enrichTrackCandidate } from "../metadata/catalog-enrichment"
 import { buildYtsearchArg } from "../music/query-builders"
+import { resolveYtdlpPath } from "./resolve-ytdlp"
 import { type MatcherEntry, pickBestMatch } from "./youtube-source-matcher"
+
+const ENRICHMENT_CONCURRENCY = 4
 
 type YtdlpEntry = {
   id?: string
@@ -46,6 +50,7 @@ export class ResolverService {
   private readonly inFlightStream = new Map<string, Promise<string | null>>()
   private readonly inFlightCatalog = new Map<string, Promise<TrackCandidate>>()
   private readonly inFlightEnrichment = new Map<string, Promise<void>>()
+  private readonly enrichmentQueue = pLimit(ENRICHMENT_CONCURRENCY)
   private onCandidateEnriched: CandidateEnrichedListener | null = null
 
   constructor(
@@ -131,23 +136,25 @@ export class ResolverService {
   private enrichInBackground(source: string, base: TrackCandidate, streamUrl: string | null): void {
     if (this.inFlightEnrichment.has(source)) return
     const settings = this.settings.get()
-    const promise = enrichTrackCandidate(base, { minScore: settings.metadataMinScore })
-      .then((enriched) => {
-        if (enriched === base) return
-        this.cache.setResolved(source, {
-          candidate: enriched,
-          streamUrl,
-          expiresAt: this.metadataExpiresAt(),
-          streamExpiresAt: this.streamExpiresAt(streamUrl),
+    const promise = this.enrichmentQueue(() =>
+      enrichTrackCandidate(base, { minScore: settings.metadataMinScore })
+        .then((enriched) => {
+          if (enriched === base) return
+          this.cache.setResolved(source, {
+            candidate: enriched,
+            streamUrl,
+            expiresAt: this.metadataExpiresAt(),
+            streamExpiresAt: this.streamExpiresAt(streamUrl),
+          })
+          this.onCandidateEnriched?.(source, enriched)
         })
-        this.onCandidateEnriched?.(source, enriched)
-      })
-      .catch(() => {
-        // enrichment failures are non-fatal; raw candidate is already cached
-      })
-      .finally(() => {
-        this.inFlightEnrichment.delete(source)
-      })
+        .catch(() => {
+          // enrichment failures are non-fatal; raw candidate is already cached
+        })
+        .finally(() => {
+          this.inFlightEnrichment.delete(source)
+        })
+    )
     this.inFlightEnrichment.set(source, promise)
   }
 
@@ -350,8 +357,9 @@ export class ResolverService {
 
   private runYtdlp(args: string[], timeoutMs: number): Promise<YtdlpEntry> {
     const settings = this.settings.get()
+    const ytdlpPath = resolveYtdlpPath(settings.ytdlpPath)
     return new Promise((resolve, reject) => {
-      const child = spawn(settings.ytdlpPath, args, { stdio: ["ignore", "pipe", "pipe"] })
+      const child = spawn(ytdlpPath, args, { stdio: ["ignore", "pipe", "pipe"] })
       let stdout = ""
       let stderr = ""
       const timeout = setTimeout(() => {
@@ -370,11 +378,7 @@ export class ResolverService {
       child.on("error", (error: NodeJS.ErrnoException) => {
         clearTimeout(timeout)
         if (error.code === "ENOENT") {
-          reject(
-            new Error(
-              `Could not find yt-dlp at "${settings.ytdlpPath}". Update the path in Settings.`
-            )
-          )
+          reject(new Error(`Could not find yt-dlp at "${ytdlpPath}". Update the path in Settings.`))
           return
         }
         reject(error)

@@ -260,7 +260,6 @@ export class ImportService {
     targetPlaylistId: string,
     playlistTitle: string | undefined
   ): Promise<void> {
-    const throttle = Math.max(1, this.settings.get().importProgressThrottle)
     let j: ImportJob = {
       ...job,
       total: candidates.length,
@@ -268,33 +267,17 @@ export class ImportService {
       failed: 0,
       phase: "saving",
     }
-    let saved = 0
-
-    const saveOne = this.library
-      .getDatabaseConnection()
-      .transaction((candidate: TrackCandidate) => {
-        this.resolver.primeCandidate(candidate)
-        const track = this.library.upsertTrack(candidate)
-        this.library.addTrackToPlaylistRecord(targetPlaylistId, track.id, candidate.sourceUrl)
-      })
-
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i]
-      try {
-        saveOne(candidate)
-        saved += 1
-        j = this.update(j, {
-          completed: saved,
-          phase: "saving",
-          status: "running",
-        })
-        if (saved % throttle === 0 || i === candidates.length - 1) {
-          this.onJobUpdated(j)
-        }
-      } catch {
-        j = this.update(j, { failed: j.failed + 1 })
-      }
-    }
+    const result = this.library.saveCandidatesBatch(candidates, targetPlaylistId, (c) =>
+      this.resolver.primeCandidate(c)
+    )
+    const saved = result.saved
+    const failed = result.failed
+    j = this.update(j, {
+      completed: saved,
+      failed,
+      phase: "saving",
+      status: "running",
+    })
     this.update(j, {
       status: "done",
       phase: "done",
