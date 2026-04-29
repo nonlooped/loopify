@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/better-sqlite3"
@@ -36,12 +36,20 @@ function runMigrations(db: DatabaseConnection): void {
 
   if (existsSync(sourceMigrationsDir)) {
     mkdirSync(migrationsDir, { recursive: true })
-    const files = readdirSync(sourceMigrationsDir)
-    for (const file of files) {
-      const sourcePath = join(sourceMigrationsDir, file)
-      const destPath = join(migrationsDir, file)
-      copyFileSync(sourcePath, destPath)
+    function copyDirRecursive(src: string, dest: string): void {
+      mkdirSync(dest, { recursive: true })
+      for (const entry of readdirSync(src)) {
+        const sourcePath = join(src, entry)
+        const destPath = join(dest, entry)
+        if (lstatSync(sourcePath).isDirectory()) {
+          copyDirRecursive(sourcePath, destPath)
+        } else {
+          copyFileSync(sourcePath, destPath)
+        }
+      }
     }
+
+    copyDirRecursive(sourceMigrationsDir, migrationsDir)
   }
 
   const drizzleDb = drizzle(db, { schema })
