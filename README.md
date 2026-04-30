@@ -2,7 +2,7 @@
 
 # Loopify Desktop
 
-### A personal desktop music app for searching, resolving, queueing, importing, and playing music from online sources.
+### A personal desktop music app for searching, resolving, queueing, and playing music from online sources.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-326ce5?style=flat-square)](./LICENSE)
 [![Electron](https://img.shields.io/badge/electron-342f4a?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
@@ -13,7 +13,7 @@
 
 <br />
 
-[Documentation](https://github.com/unloopedmido/loopify/wiki) · [Issues](https://github.com/unloopedmido/loopify/issues) · [Changelog](./CHANGELOG.md)
+[Documentation](https://github.com/unloopedmido/loopify/wiki) · [Issues](https://github.com/unloopedmido/loopify/issues)
 
 </div>
 
@@ -63,6 +63,9 @@ pnpm run dist:win
 
 # Build for macOS
 pnpm run dist:mac
+
+# Build for Linux
+pnpm run dist:linux
 ```
 
 Output binaries are written to the `release` folder.
@@ -86,7 +89,7 @@ Audio playback engine. Loopify resolves `mpv` in this order:
 
 **Bring your own mpv:** Download from [mpv.io](https://mpv.io) and place the executable at:
 - Windows: `resources\binaries\mpv\win32-x64\mpv.exe`
-- macOS: `resources/binaries/mpv/darwin-arm64/mpv` or `darwin-x64/mpv`
+- macOS: `resources\binaries\mpv\darwin-arm64/mpv` or `darwin-x64/mpv`
 - Linux: `resources/binaries/mpv/linux-x64/mpv`
 
 ### yt-dlp
@@ -107,20 +110,27 @@ yt-dlp --version
 | `src/preload`      | Typed API bridge via `contextBridge`                        |
 | `src/renderer`     | React + Vite UI                                             |
 | `src/shared`       | IPC contracts and shared music types                        |
-| `drizzle/schema.ts`| SQLite data model for migrations                            |
+| `src/main/db`      | Drizzle ORM schema, repositories, and database setup       |
+| `drizzle/migrations` | SQLite migrations                                            |
 
 ---
 
 ## Commands
 
-| Script           | Purpose                                |
-| ---------------- | -------------------------------------- |
-| `pnpm run dev`   | Start with hot reload                  |
-| `pnpm run build` | Build all bundles                      |
-| `pnpm run typecheck` | Type-check without emitting        |
-| `pnpm run lint`  | Lint with Biome                        |
-| `pnpm run dist:win` | Build Windows NSIS installer       |
-| `pnpm run dist:mac` | Build macOS distributable          |
+| Script                | Purpose                                  |
+| --------------------- | ---------------------------------------- |
+| `pnpm run dev`        | Start with hot reload                    |
+| `pnpm run build`      | Build all bundles                        |
+| `pnpm run preview`    | Preview production build                 |
+| `pnpm run typecheck`  | Type-check without emitting              |
+| `pnpm run lint`       | Lint with Biome                          |
+| `pnpm run lint:fix`   | Auto-fix Biome issues                    |
+| `pnpm run format`     | Format code with Biome                   |
+| `pnpm run db:generate`| Generate Drizzle migrations              |
+| `pnpm run db:migrate` | Apply pending migrations                 |
+| `pnpm run dist:win`   | Build Windows NSIS installer             |
+| `pnpm run dist:mac`   | Build macOS dmg+zip                      |
+| `pnpm run dist:linux` | Build Linux AppImage/tar.gz              |
 
 If native packages were installed with lifecycle scripts disabled, rebuild them:
 
