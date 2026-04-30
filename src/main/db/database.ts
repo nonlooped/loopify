@@ -23,7 +23,7 @@ export function createDatabase(): DatabaseConnection {
 }
 
 export function createDrizzleDatabase(db: DatabaseConnection) {
-  return drizzle(db, { schema })
+  return drizzle({ client: db, schema })
 }
 
 function runMigrations(db: DatabaseConnection): void {
@@ -52,7 +52,7 @@ function runMigrations(db: DatabaseConnection): void {
     copyDirRecursive(sourceMigrationsDir, migrationsDir)
   }
 
-  const drizzleDb = drizzle(db, { schema })
+  const drizzleDb = drizzle({ client: db, schema })
   migrate(drizzleDb, { migrationsFolder: migrationsDir })
 }
 
