@@ -19,9 +19,11 @@ import {
 import { LoopifyMark } from "@/components/branding/LoopifyMark"
 import { LoopifyWordmark } from "@/components/branding/LoopifyWordmark"
 import { cn } from "@/lib/cn"
+import { buildSystemPlaylistContextMenu } from "@/lib/context-menu-items"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { formatModShortcut, formatModShortcutTitle } from "@/lib/shortcut"
 import { useAppStore } from "@/stores/app.store"
+import { showContextMenu } from "@/stores/context-menu.store"
 
 const rowBase =
   "group relative flex w-full min-w-0 min-h-[44px] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
@@ -46,7 +48,7 @@ const iconWrap = (active: boolean) =>
 
 export function NavRail() {
   const isExpanded = useAppStore((s) => s.isSidebarExpanded)
-  const activePlaylistId = useAppStore((s) => s.activePlaylistId)
+  const libraryView = useAppStore((s) => s.libraryView)
   const queueLength = useAppStore((s) => s.queue.length)
   const isQueueOpen = useAppStore((s) => s.isQueueOpen)
   const selectPlaylist = useAppStore((s) => s.selectPlaylistWithTransition)
@@ -56,9 +58,10 @@ export function NavRail() {
   const toggleImport = useAppStore((s) => s.toggleImport)
   const handleCreatePlaylist = useAppStore((s) => s.handleCreatePlaylist)
   const toggleQueue = useAppStore((s) => s.toggleQueue)
-  const atCollection = activePlaylistId == null
-  const likedActive = activePlaylistId === LIKED_SONGS_PLAYLIST_ID
-  const offlineActive = activePlaylistId === OFFLINE_SONGS_PLAYLIST_ID
+  const atCollection = libraryView.kind === "collection"
+  const likedActive = libraryView.kind === "playlist" && libraryView.id === LIKED_SONGS_PLAYLIST_ID
+  const offlineActive =
+    libraryView.kind === "playlist" && libraryView.id === OFFLINE_SONGS_PLAYLIST_ID
   const [isLikedDropTarget, setIsLikedDropTarget] = useState(false)
 
   const handleLikedDragOver = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
@@ -156,6 +159,9 @@ export function NavRail() {
               onDragOver={handleLikedDragOver}
               onDragLeave={handleLikedDragLeave}
               onDrop={handleLikedDrop}
+              onContextMenu={(e) =>
+                showContextMenu(e, buildSystemPlaylistContextMenu(LIKED_SONGS_PLAYLIST_ID))
+              }
             />
             <NavRow
               expanded={isExpanded}
@@ -165,6 +171,9 @@ export function NavRail() {
               onClick={goToOffline}
               title="Offline songs"
               icon={<HardDrive className="h-4 w-4" strokeWidth={2} />}
+              onContextMenu={(e) =>
+                showContextMenu(e, buildSystemPlaylistContextMenu(OFFLINE_SONGS_PLAYLIST_ID))
+              }
             />
           </div>
 
@@ -260,6 +269,7 @@ function NavRow({
   onDragOver,
   onDragLeave,
   onDrop,
+  onContextMenu,
 }: {
   expanded: boolean
   label: string
@@ -273,6 +283,7 @@ function NavRow({
   onDragOver?: (e: React.DragEvent<HTMLButtonElement>) => void
   onDragLeave?: (e: React.DragEvent<HTMLButtonElement>) => void
   onDrop?: (e: React.DragEvent<HTMLButtonElement>) => void
+  onContextMenu?: (e: React.MouseEvent<HTMLButtonElement>) => void
 }) {
   const ariaCurrent = selection === "location" && active ? "page" : undefined
   const ariaPressed = selection === "toggle" ? active : undefined
@@ -284,6 +295,7 @@ function NavRow({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
+      onContextMenu={onContextMenu}
       title={title}
       aria-label={expanded ? undefined : label}
       aria-current={ariaCurrent}

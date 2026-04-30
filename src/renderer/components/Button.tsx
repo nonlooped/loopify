@@ -1,7 +1,7 @@
 import { type ButtonHTMLAttributes, forwardRef } from "react"
 import { cn } from "@/lib/cn"
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "ghost" | "danger" | "outline"
   size?: "sm" | "md" | "lg"
 }

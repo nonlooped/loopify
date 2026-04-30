@@ -75,7 +75,7 @@ export function useLyricsData(track: PlayerTrack | null) {
   return { loadState, lines, staticLyrics, hasTrack: Boolean(hasTrack) }
 }
 
-export function findActiveLyricIndex(lines: SyncedLyricLine[], positionSeconds: number): number {
+function findActiveLyricIndex(lines: SyncedLyricLine[], positionSeconds: number): number {
   if (lines.length === 0) return -1
   let active = -1
   for (let i = 0; i < lines.length; i++) {

@@ -32,9 +32,11 @@ import type { QueueItem, Track } from "src/shared/types/music"
 import { EmptyState } from "@/components/EmptyState"
 import { IconButton } from "@/components/IconButton"
 import { cn } from "@/lib/cn"
+import { buildTrackContextMenu } from "@/lib/context-menu-items"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut } from "@/lib/shortcut"
 import { useAppStore } from "@/stores/app.store"
+import { showContextMenu } from "@/stores/context-menu.store"
 
 const VIRTUALIZATION_THRESHOLD = 120
 const QUEUE_ROW_ESTIMATE = 60
@@ -49,6 +51,7 @@ interface SortableQueueItemProps {
   virtualStyle?: React.CSSProperties
   isActive: boolean
   isOpen: boolean
+  queueLength: number
   onPlay: (item: QueueItem) => void
   onRemove: (id: string) => void
   onToggleLikeTrack: (track: Track) => void
@@ -62,6 +65,7 @@ function SortableQueueItem({
   virtualStyle,
   isActive,
   isOpen,
+  queueLength,
   onPlay,
   onRemove,
   onToggleLikeTrack,
@@ -91,6 +95,19 @@ function SortableQueueItem({
     <li
       ref={setNodeRef}
       style={style}
+      onContextMenu={(e) => {
+        if (!item.track) return
+        e.preventDefault()
+        showContextMenu(
+          e,
+          buildTrackContextMenu({
+            track: item.track as Track,
+            showRemoveFromQueue: { queueItemId: item.id },
+            showQueueMoveActions: true,
+            queueItemCount: queueLength,
+          })
+        )
+      }}
       className={cn(
         "group flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-ui ease-out-quart",
         isActive ? "bg-accent/10 text-foreground" : "hover:bg-white/5 text-muted",
@@ -425,6 +442,7 @@ function QueueOverlayImpl({ compact = false }: QueueOverlayInnerProps) {
                           index={virtualItem.index}
                           isActive={item.id === currentQueueItemId}
                           isOpen={isOpen}
+                          queueLength={queue.length}
                           onPlay={queueOnPlay}
                           onRemove={queueOnRemove}
                           onToggleLikeTrack={handleToggleLikeTrack}
@@ -450,6 +468,7 @@ function QueueOverlayImpl({ compact = false }: QueueOverlayInnerProps) {
                         index={index}
                         isActive={item.id === currentQueueItemId}
                         isOpen={isOpen}
+                        queueLength={queue.length}
                         onPlay={queueOnPlay}
                         onRemove={queueOnRemove}
                         onToggleLikeTrack={handleToggleLikeTrack}

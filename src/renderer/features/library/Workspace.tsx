@@ -29,10 +29,14 @@ import { Button } from "@/components/Button"
 import { EmptyState } from "@/components/EmptyState"
 import { IconButton } from "@/components/IconButton"
 import { cn } from "@/lib/cn"
+import { buildPlaylistContextMenu, buildTrackContextMenu } from "@/lib/context-menu-items"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { downloadTitle, formatPlaylistMeta, formatTrackDuration } from "@/lib/music-format"
 import { formatModShortcut, searchShortcutProse } from "@/lib/shortcut"
 import { useAppStore } from "@/stores/app.store"
+import { showContextMenu } from "@/stores/context-menu.store"
+import { AlbumPage } from "./AlbumPage"
+import { ArtistPage } from "./ArtistPage"
 import { PlaylistArtwork } from "./PlaylistArtwork"
 
 const PLAYLIST_TRACK_DRAG_MIME = "application/x-loopify-pl-entry"
@@ -54,7 +58,7 @@ function playlistCountTransitionName(playlistId: string) {
 
 export function Workspace() {
   const playlists = useAppStore((s) => s.playlists)
-  const activePlaylistId = useAppStore((s) => s.activePlaylistId)
+  const libraryView = useAppStore((s) => s.libraryView)
   const selectPlaylist = useAppStore((s) => s.selectPlaylistWithTransition)
   const handlePlayTrack = useAppStore((s) => s.handlePlayTrack)
   const handlePlayPlaylist = useAppStore((s) => s.handlePlayPlaylist)
@@ -72,6 +76,8 @@ export function Workspace() {
   const handleCreatePlaylist = useAppStore((s) => s.handleCreatePlaylist)
   const playlistShuffleIds = useAppStore((s) => s.playlistShuffleIds)
   const togglePlaylistShuffle = useAppStore((s) => s.togglePlaylistShuffle)
+
+  const activePlaylistId = libraryView.kind === "playlist" ? libraryView.id : null
   const activePlaylist = useMemo(
     () => playlists.find((p) => p.id === activePlaylistId) || null,
     [playlists, activePlaylistId]
@@ -158,9 +164,8 @@ export function Workspace() {
   )
 
   const backToCollection = useCallback(() => {
-    if (!activePlaylist) return
     selectPlaylist(null)
-  }, [activePlaylist, selectPlaylist])
+  }, [selectPlaylist])
 
   const hasTracks = activePlaylist?.tracks && activePlaylist.tracks.length > 0
   const activeTracks = useMemo(
@@ -171,6 +176,22 @@ export function Workspace() {
     sortField === "position" &&
     sortDirection === "asc" &&
     (activePlaylist ? !isSystemPlaylistId(activePlaylist.id) : true)
+
+  if (libraryView.kind === "artist") {
+    return (
+      <div className="flex min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-10 pb-10 sm:px-8 sm:pt-12 sm:pb-12 lg:px-12 lg:pt-16 lg:pb-16">
+        <ArtistPage deezerId={libraryView.deezerId} />
+      </div>
+    )
+  }
+
+  if (libraryView.kind === "album") {
+    return (
+      <div className="flex min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-10 pb-10 sm:px-8 sm:pt-12 sm:pb-12 lg:px-12 lg:pt-16 lg:pb-16">
+        <AlbumPage deezerId={libraryView.deezerId} />
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-10 pb-10 sm:px-8 sm:pt-12 sm:pb-12 lg:px-12 lg:pt-16 lg:pb-16">
@@ -243,6 +264,7 @@ export function Workspace() {
                   onDragOver={(e) => handlePlaylistCardDragOver(e, p.id)}
                   onDragLeave={(e) => handlePlaylistCardDragLeave(e, p.id)}
                   onDrop={(e) => handlePlaylistCardDrop(e, p.id)}
+                  onContextMenu={(e) => showContextMenu(e, buildPlaylistContextMenu(p))}
                   className={cn(
                     "group relative aspect-square overflow-hidden rounded-2xl border border-transparent bg-surface shadow-md transition-transform duration-ui ease-out-quart hover:scale-[1.04] hover:border-border hover:shadow-lg active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100",
                     trackDropPlaylistId === p.id &&
@@ -739,6 +761,7 @@ function PlaylistTracksList({
     <PlaylistTrackRow
       key={track.playlistEntryId}
       track={track}
+      playlistId={playlistId}
       index={i}
       trackCount={tracks.length}
       handlePlayTrack={handlePlayTrack}
@@ -795,6 +818,7 @@ function PlaylistTracksList({
 
 const PlaylistTrackRow = memo(function PlaylistTrackRow({
   track,
+  playlistId,
   index,
   trackCount,
   handlePlayTrack,
@@ -814,6 +838,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
   virtualStyle,
 }: {
   track: PlaylistTrackItem
+  playlistId: string
   index: number
   trackCount: number
   handlePlayTrack: (t: Track) => void
@@ -896,6 +921,19 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
       onDragLeave={canReorder ? onRowDragLeave : undefined}
       onDrop={canReorder ? onRowDrop : undefined}
       onKeyDown={handleRowKeyDown}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        showContextMenu(
+          e,
+          buildTrackContextMenu({
+            track,
+            currentPlaylistId: playlistId,
+            showRemoveFromPlaylist: onRemoveEntry
+              ? { playlistId, entryId: track.playlistEntryId }
+              : undefined,
+          })
+        )
+      }}
     >
       {canReorder && (
         <IconButton

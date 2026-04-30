@@ -1,6 +1,7 @@
 import { flushSync } from "react-dom"
 import type { UpdateStatus } from "src/shared/contracts/ipc"
 import {
+  type CatalogSearchResult,
   isSystemPlaylistId,
   OFFLINE_SONGS_PLAYLIST_ID,
   type PlayerState,
@@ -14,6 +15,14 @@ import {
 import { create } from "zustand"
 import type { PlaylistActionState } from "../features/shell/PlaylistActionModal"
 import { NEAR_END_OFFSET_SEC } from "../lib/keyboard-shortcuts"
+
+type LibraryView =
+  | { kind: "collection" }
+  | { kind: "playlist"; id: string }
+  | { kind: "artist"; deezerId: number }
+  | { kind: "album"; deezerId: number }
+
+type SearchTab = "all" | "tracks" | "artists" | "albums"
 
 type BootPhase = "loading" | "ready" | "error"
 
@@ -108,15 +117,21 @@ function nextRepeatMode(mode: RepeatMode): RepeatMode {
   return "off"
 }
 
-export interface AppState {
+interface AppState {
   bootPhase: BootPhase
   bootError: string | null
   playerState: PlayerState | null
   playlists: Playlist[]
   queue: QueueItem[]
-  activePlaylistId: string | null
+  libraryView: LibraryView
 
   isSearchOpen: boolean
+  searchQuery: string
+  searchTab: SearchTab
+  searchResults: CatalogSearchResult[]
+  searchLoading: boolean
+  searchError: string | null
+
   isSettingsOpen: boolean
   isImportOpen: boolean
   isQueueOpen: boolean
@@ -138,8 +153,12 @@ export interface AppState {
   refreshQueue: () => Promise<QueueItem[]>
   refreshPlaylists: () => Promise<Playlist[]>
 
-  setActivePlaylistId: (id: string | null) => void
+  setLibraryView: (view: LibraryView) => void
   selectPlaylistWithTransition: (id: string | null) => void
+
+  performSearch: (query: string) => Promise<void>
+  setSearchTab: (tab: SearchTab) => void
+  clearSearch: () => void
 
   handlePlayPause: () => Promise<void>
   handleCycleRepeat: () => Promise<void>
@@ -203,9 +222,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
   playerState: null,
   playlists: [],
   queue: [],
-  activePlaylistId: null,
+  libraryView: { kind: "collection" },
 
   isSearchOpen: false,
+  searchQuery: "",
+  searchTab: "all" as SearchTab,
+  searchResults: [],
+  searchLoading: false,
+  searchError: null,
+
   isSettingsOpen: false,
   isImportOpen: false,
   isQueueOpen: false,
@@ -303,31 +328,32 @@ export const useAppStore = create<AppState>()((set, get) => ({
     return updated
   },
 
-  setActivePlaylistId: (id) => {
-    set({ activePlaylistId: id })
+  setLibraryView: (view: LibraryView) => {
+    set({ libraryView: view })
   },
 
   selectPlaylistWithTransition: (id) => {
-    const nextId = id || null
+    const nextView: LibraryView = id ? { kind: "playlist", id } : { kind: "collection" }
     const root = document.documentElement
     const doc = document as DocumentWithViewTransition
-    const { activePlaylistId } = get()
+    const { libraryView } = get()
+    const currentKind = libraryView.kind
     const direction =
-      nextId == null
+      nextView.kind === "collection"
         ? "back"
-        : activePlaylistId == null || activePlaylistId !== nextId
+        : currentKind === "collection" || (libraryView.kind === "playlist" && libraryView.id !== id)
           ? "forward"
           : null
 
     if (!direction || typeof doc.startViewTransition !== "function") {
-      set({ activePlaylistId: nextId })
+      set({ libraryView: nextView })
       return
     }
 
     root.dataset.playlistNav = direction
     const transition = doc.startViewTransition(() => {
       flushSync(() => {
-        set({ activePlaylistId: nextId })
+        set({ libraryView: nextView })
       })
     })
 
@@ -335,6 +361,40 @@ export const useAppStore = create<AppState>()((set, get) => ({
       if (root.dataset.playlistNav === direction) {
         delete root.dataset.playlistNav
       }
+    })
+  },
+
+  performSearch: async (query: string) => {
+    const trimmed = query.trim()
+    if (!trimmed) {
+      set({ searchResults: [], searchLoading: false, searchError: null, searchQuery: trimmed })
+      return
+    }
+    set({ searchLoading: true, searchError: null, searchQuery: trimmed })
+    try {
+      const results = await window.loopify.search.query({ text: trimmed })
+      set({ searchResults: results, searchLoading: false })
+    } catch (err) {
+      console.error("Search failed:", err)
+      set({
+        searchResults: [],
+        searchLoading: false,
+        searchError: err instanceof Error ? err.message : "Search failed",
+      })
+    }
+  },
+
+  setSearchTab: (tab: SearchTab) => {
+    set({ searchTab: tab })
+  },
+
+  clearSearch: () => {
+    set({
+      searchQuery: "",
+      searchResults: [],
+      searchLoading: false,
+      searchError: null,
+      searchTab: "all",
     })
   },
 
@@ -626,7 +686,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   submitPlaylistCreate: async (name) => {
     const updated = await window.loopify.playlists.create(name)
-    set({ playlists: updated, activePlaylistId: updated[updated.length - 1].id })
+    const lastPlaylist = updated[updated.length - 1]
+    set({
+      playlists: updated,
+      libraryView: lastPlaylist ? { kind: "playlist", id: lastPlaylist.id } : get().libraryView,
+    })
   },
 
   submitPlaylistRename: async (id, name) => {
@@ -635,11 +699,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   submitPlaylistDelete: async (id) => {
-    const { activePlaylistId } = get()
+    const { libraryView } = get()
     const updated = await window.loopify.playlists.delete(id)
+    const isViewingDeletedPlaylist = libraryView.kind === "playlist" && libraryView.id === id
     set({
       playlists: updated,
-      activePlaylistId: activePlaylistId === id ? (updated[0]?.id ?? null) : activePlaylistId,
+      libraryView: isViewingDeletedPlaylist ? { kind: "collection" } : libraryView,
     })
   },
 

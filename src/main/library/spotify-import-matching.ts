@@ -1,17 +1,14 @@
 import pLimit from "p-limit"
 import type { TrackCandidate } from "../../shared/types/music"
 import { normalize, tokenList } from "../../shared/utils/string"
-import { searchCatalog } from "../catalog/catalog-search"
-import { enrichTrackCandidate } from "../metadata/catalog-enrichment"
+import { DeezerService } from "../catalog/deezer-service"
 import { buildScsearchArg, buildYtsearchArg } from "../music/query-builders"
 import type { ResolverService } from "../resolver/resolver-service"
 
 export type SpotifyImportMetadataOptions = {
-  enrichmentEnabled: boolean
-  minScore: number
+  deezerMatchThreshold: number
 }
 
-const MATCH_CONCURRENCY = 4
 const SEARCH_TIMEOUT_MS = 8000
 export const DEFAULT_MATCH_SCORE_THRESHOLD = 0.42
 
@@ -77,19 +74,17 @@ function trackMatchScore(
 async function finalizeSpotifyMatch(
   matched: TrackCandidate,
   row: SpotifyRow,
-  metadata: SpotifyImportMetadataOptions | undefined
+  _metadata: SpotifyImportMetadataOptions | undefined
 ): Promise<TrackCandidate> {
-  const merged: TrackCandidate = {
+  return {
     ...matched,
     title: row.title,
     artist: row.artist?.trim() || matched.artist,
     durationMs: row.durationMs ?? matched.durationMs,
   }
-  if (metadata?.enrichmentEnabled) {
-    return enrichTrackCandidate(merged, { minScore: metadata.minScore })
-  }
-  return merged
 }
+
+const deezer = new DeezerService()
 
 export async function matchSpotifyRowToCandidate(
   resolver: ResolverService,
@@ -100,11 +95,8 @@ export async function matchSpotifyRowToCandidate(
   const q = [row.title, row.artist].filter(Boolean).join(" ").trim()
   if (!q) return null
 
-  // Race the canonical catalog path (iTunes/Deezer → YouTube) against the YouTube-first fallback
-  // so a slow catalog hit doesn't gate the whole import. Catalog wins when it qualifies (it's
-  // the more reliable source); otherwise the YouTube result is used; SoundCloud is last resort.
   const ytQ = buildYtsearchArg(q, 1)
-  const catalogPromise = resolveViaCatalog(resolver, row, q, threshold)
+  const catalogPromise = resolveViaDeezer(resolver, row, q, threshold)
   const ytPromise = withTimeout(
     resolver.getFirstSearchCandidate(ytQ),
     SEARCH_TIMEOUT_MS,
@@ -146,7 +138,7 @@ export async function matchSpotifyRowToCandidate(
   return null
 }
 
-async function resolveViaCatalog(
+async function resolveViaDeezer(
   resolver: ResolverService,
   row: SpotifyRow,
   query: string,
@@ -154,7 +146,7 @@ async function resolveViaCatalog(
 ): Promise<TrackCandidate | null> {
   try {
     const catalogHits = await withTimeout(
-      searchCatalog(query),
+      deezer.searchTracks(query),
       SEARCH_TIMEOUT_MS,
       "catalog search timed out"
     )
@@ -218,4 +210,4 @@ export async function matchAllSpotifyRows(
   return out
 }
 
-export { MATCH_CONCURRENCY, SEARCH_TIMEOUT_MS }
+export { SEARCH_TIMEOUT_MS }

@@ -1,7 +1,7 @@
 import { type ButtonHTMLAttributes, forwardRef } from "react"
 import { cn } from "@/lib/cn"
 
-export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: "sm" | "md" | "lg"
   active?: boolean
 }

@@ -19,13 +19,6 @@ export function tokenList(value: string): string[] {
 }
 
 /**
- * Splits text into normalized tokens (alias for tokenList for semantic clarity).
- */
-export function tokenize(value: string): string[] {
-  return tokenList(value)
-}
-
-/**
  * Returns a Set of normalized tokens for O(1) lookups.
  */
 export function tokenSet(value: string): Set<string> {

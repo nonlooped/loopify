@@ -1,7 +1,7 @@
 import { forwardRef, type InputHTMLAttributes } from "react"
 import { cn } from "@/lib/cn"
 
-export interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {}
+interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {}
 
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
   ({ className, ...props }, ref) => {

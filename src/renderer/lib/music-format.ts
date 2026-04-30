@@ -8,7 +8,7 @@ export function formatTrackDuration(ms: number | null): string {
   return `${m}:${s.toString().padStart(2, "0")}`
 }
 
-export function formatTotalDuration(ms: number): string {
+function formatTotalDuration(ms: number): string {
   if (ms <= 0) return "0 min"
   const totalMinutes = Math.round(ms / 60000)
   if (totalMinutes < 60) {

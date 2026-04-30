@@ -511,6 +511,25 @@ html[data-playlist-nav="back"]::view-transition-new(workspace-page) {
   .ol-app-fade.is-visible {
     opacity: 1;
   }
+
+  /* Context menu: scale + opacity at cursor, enter 120ms / exit 80ms */
+  .ol-context-menu {
+    opacity: 0;
+    transform: scale(0.96);
+    transform-origin: 0 0;
+    transition:
+      opacity 120ms var(--ease-out-quart),
+      transform 120ms var(--ease-out-quart);
+  }
+  .ol-context-menu.ol-open {
+    opacity: 1;
+    transform: none;
+  }
+  .ol-context-menu:not(.ol-open) {
+    transition:
+      opacity 80ms var(--ease-in-quart),
+      transform 80ms var(--ease-in-quart);
+  }
   .ol-now-playing-panel {
     transform-origin: 50% 100%;
     opacity: 0;
@@ -594,6 +613,11 @@ html[data-playlist-nav="back"]::view-transition-new(workspace-page) {
   .ol-now-playing-dock,
   .ol-now-playing-dock.is-hidden {
     filter: none;
+    transform: none;
+    transition: opacity 0.01ms linear;
+  }
+  .ol-context-menu,
+  .ol-context-menu:not(.ol-open) {
     transform: none;
     transition: opacity 0.01ms linear;
   }

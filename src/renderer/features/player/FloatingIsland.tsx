@@ -21,11 +21,13 @@ import { IconButton } from "@/components/IconButton"
 import { Slider } from "@/components/Slider"
 import { useFocusTrap } from "@/hooks/useFocusTrap"
 import { cn } from "@/lib/cn"
+import { buildTrackContextMenu } from "@/lib/context-menu-items"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { modArrowHint, playPauseHint } from "@/lib/keyboard-shortcuts"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut, isMacLike } from "@/lib/shortcut"
 import { useAppStore } from "@/stores/app.store"
+import { showContextMenu } from "@/stores/context-menu.store"
 import { SyncedLyricsView } from "./SyncedLyricsView"
 
 export function FloatingIsland() {
@@ -374,6 +376,10 @@ export function FloatingIsland() {
                 if (!currentTrack) return
                 e.dataTransfer.setData(DRAG_MIME_TYPES.TRACK, JSON.stringify(currentTrack))
                 e.dataTransfer.effectAllowed = "copy"
+              }}
+              onContextMenu={(e) => {
+                if (!currentTrack) return
+                showContextMenu(e, buildTrackContextMenu({ track: currentTrack }))
               }}
               title={currentTrack ? "Drag to a playlist to add this track" : undefined}
             >

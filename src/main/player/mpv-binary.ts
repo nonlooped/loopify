@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs"
-import { join } from "node:path"
+import { resolveBundledBinary } from "../shared/resolve-bundled-binary"
 
 const MPV_BINARY_NAME = process.platform === "win32" ? "mpv.exe" : "mpv"
 const ENV_MPV_PATH = "LOOPIFY_MPV_PATH"
@@ -10,27 +9,10 @@ export function resolveMpvPath(configuredPath: string): string {
     return envPath
   }
 
-  const bundledPath = resolveBundledMpvPath()
+  const bundledPath = resolveBundledBinary("mpv", MPV_BINARY_NAME)
   if (bundledPath) {
     return bundledPath
   }
 
   return configuredPath
-}
-
-function resolveBundledMpvPath(): string | null {
-  const platformArch = `${process.platform}-${process.arch}`
-  const relativeParts = ["binaries", "mpv", platformArch, MPV_BINARY_NAME]
-  const candidates = [
-    join(process.resourcesPath, ...relativeParts),
-    join(process.cwd(), "resources", ...relativeParts),
-  ]
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate
-    }
-  }
-
-  return null
 }

@@ -236,8 +236,7 @@ export class ImportService {
         }
       },
       {
-        enrichmentEnabled: settings.metadataEnrichmentEnabled,
-        minScore: settings.metadataMinScore,
+        deezerMatchThreshold: settings.deezerMatchThreshold,
       }
     )
     if (!candidates.length) {

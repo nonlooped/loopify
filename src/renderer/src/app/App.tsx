@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react"
 import { lazy, Suspense, useEffect } from "react"
 import { AppErrorBanner } from "@/components/AppErrorBanner"
 import { Button } from "@/components/Button"
+import { ContextMenuRenderer } from "@/components/ContextMenu"
 import { UpdateBanner } from "@/components/UpdateBanner"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
@@ -231,6 +232,8 @@ export function App() {
             <ImportModal />
             <PlaylistActionModal />
           </Suspense>
+
+          <ContextMenuRenderer />
         </div>
       </div>
     </div>

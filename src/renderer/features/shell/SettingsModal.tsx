@@ -79,8 +79,7 @@ export function SettingsModal() {
         "spotifyMatchScoreThreshold",
         settings.spotifyMatchScoreThreshold
       ),
-      metadataEnrichmentEnabled: formData.get("metadataEnrichmentEnabled") === "on",
-      metadataMinScore: n("metadataMinScore", settings.metadataMinScore),
+      deezerMatchThreshold: n("deezerMatchThreshold", settings.deezerMatchThreshold),
       importProgressThrottle: n("importProgressThrottle", settings.importProgressThrottle),
       discordPresenceEnabled: formData.get("discordPresenceEnabled") === "on",
     }
@@ -242,26 +241,6 @@ export function SettingsModal() {
                           <label className="group flex cursor-pointer items-start justify-between gap-6 border-b border-border/40 pb-6">
                             <div className="flex flex-col pr-8">
                               <span className="type-body font-medium text-foreground transition-colors group-hover:text-white">
-                                Improve catalog metadata
-                              </span>
-                              <span className="type-meta mt-1 text-muted">
-                                Fill in missing artwork, artist, and title details from public
-                                catalog sources when matches are confident.
-                              </span>
-                            </div>
-                            <div className="mt-1 shrink-0">
-                              <input
-                                type="checkbox"
-                                name="metadataEnrichmentEnabled"
-                                defaultChecked={settings.metadataEnrichmentEnabled}
-                                className="h-5 w-5 rounded border-subtle bg-white/5 transition-colors checked:bg-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-                              />
-                            </div>
-                          </label>
-
-                          <label className="group flex cursor-pointer items-start justify-between gap-6 pt-6">
-                            <div className="flex flex-col pr-8">
-                              <span className="type-body font-medium text-foreground transition-colors group-hover:text-white">
                                 Share now playing to Discord
                               </span>
                               <span className="type-meta mt-1 text-muted">
@@ -420,16 +399,16 @@ export function SettingsModal() {
                           </div>
                           <div>
                             <label
-                              htmlFor="metadataMinScore"
+                              htmlFor="deezerMatchThreshold"
                               className="type-label mb-2 block text-foreground"
                             >
-                              Catalog match score
+                              Deezer match threshold
                             </label>
                             <TextField
-                              id="metadataMinScore"
-                              name="metadataMinScore"
+                              id="deezerMatchThreshold"
+                              name="deezerMatchThreshold"
                               type="number"
-                              defaultValue={settings.metadataMinScore}
+                              defaultValue={settings.deezerMatchThreshold}
                               min={0}
                               max={1}
                               step={0.01}
