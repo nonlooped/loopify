@@ -30,7 +30,7 @@ pnpm run dev
 
 Most music apps require a subscription, lock you into their library, or force you to manually download tracks. You might have playlists scattered across Spotify, YouTube, and SoundCloud—but there's no single place to search, queue, and play them all without switching apps.
 
-**Loopify solves this** by treating the open web as your library. Search and play directly from YouTube, SoundCloud, and other online sources—without downloading, without subscriptions, and without leaving your desktop.
+**Loopify solves this** by treating the open web as your library. Search and play directly from YouTube, SoundCloud, and other online sources—without subscriptions and without leaving your desktop. Optionally download tracks for offline playback.
 
 ---
 
@@ -94,11 +94,16 @@ Audio playback engine. Loopify resolves `mpv` in this order:
 
 ### yt-dlp
 
-Source resolver for fetching stream URLs and metadata.
+Source resolver for fetching stream URLs and metadata. Loopify resolves `yt-dlp` in this order:
 
-```bash
-yt-dlp --version
-```
+1. Bundled binary from `resources/binaries/yt-dlp/<platform>-<arch>/`
+2. `settings.ytdlpPath` from app settings
+3. System PATH
+
+**Bring your own yt-dlp:** Download from [github.com/yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp) and place the executable at:
+- Windows: `resources\binaries\yt-dlp\win32-x64\yt-dlp.exe`
+- macOS: `resources/binaries/yt-dlp/darwin-arm64/yt-dlp` or `darwin-x64/yt-dlp`
+- Linux: `resources/binaries/yt-dlp/linux-x64/yt-dlp`
 
 ---
 
@@ -126,6 +131,7 @@ yt-dlp --version
 | `pnpm run lint`       | Lint with Biome                          |
 | `pnpm run lint:fix`   | Auto-fix Biome issues                    |
 | `pnpm run format`     | Format code with Biome                   |
+| `pnpm run smoke:win`  | Windows dir build without code signing   |
 | `pnpm run db:generate`| Generate Drizzle migrations              |
 | `pnpm run db:migrate` | Apply pending migrations                 |
 | `pnpm run dist:win`   | Build Windows NSIS installer             |
@@ -144,7 +150,7 @@ pnpm rebuild electron better-sqlite3
 
 **Is this free?** Yes—MIT licensed and fully open source.
 
-**Where does the music play from?** Loopify streams directly from YouTube, SoundCloud, and other online sources via `yt-dlp`. No local storage required.
+**Where does the music play from?** Loopify streams directly from YouTube, SoundCloud, and other online sources via `yt-dlp`. Tracks can optionally be downloaded for offline playback.
 
 **Can I use my own mpv binary?** Yes. Place it in `resources/binaries/mpv/<platform>/` or set `LOOPIFY_MPV_PATH`.
 
