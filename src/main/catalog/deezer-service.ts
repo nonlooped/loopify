@@ -59,6 +59,7 @@ type DeezerTrackResponse = {
   duration: number
   isrc?: string
   artist?: { id: number; name: string }
+  contributors?: { id: number; name: string; role: string }[]
   album?: {
     id: number
     title: string
@@ -91,12 +92,22 @@ type DeezerAlbumResponse = {
 }
 
 function mapTrack(r: DeezerTrackResponse): CatalogTrack {
+  const mainArtistId = r.artist?.id
+  const features: string[] = []
+  if (r.contributors) {
+    for (const c of r.contributors) {
+      if (c.id !== mainArtistId) {
+        features.push(c.name)
+      }
+    }
+  }
   return {
     catalogProvider: "deezer",
     catalogId: String(r.id),
     title: r.title,
     artist: r.artist?.name ?? "",
     artistDeezerId: r.artist?.id,
+    features,
     album: r.album?.title ?? null,
     albumDeezerId: r.album?.id,
     artworkUrl: pickArtwork(

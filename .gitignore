@@ -30,7 +30,6 @@ data/
 *.db
 *.db-shm
 *.db-wal
-drizzle/migrations/
 
 # AI agents
 .opencode/

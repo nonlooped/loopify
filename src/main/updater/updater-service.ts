@@ -12,32 +12,38 @@ import {
   normalizeVersion,
 } from "./update-status"
 
-const { autoUpdater } = electronUpdater
+let cachedAutoUpdater: AppUpdater | null = null
+
+function getAutoUpdater(): AppUpdater {
+  if (!cachedAutoUpdater) {
+    cachedAutoUpdater = electronUpdater.autoUpdater
+  }
+  return cachedAutoUpdater
+}
 
 type UpdateStatusListener = (status: UpdateStatus) => void
 
 export class UpdaterService {
   private readonly updater: AppUpdater
   private readonly listeners = new Set<UpdateStatusListener>()
-  private readonly currentVersion = app.getVersion()
-  private readonly supported = isUpdaterSupported(
-    process.platform,
-    app.isPackaged,
-    process.resourcesPath
-  )
+  private readonly currentVersion: string
+  private readonly supported: boolean
 
-  private status: UpdateStatus = this.supported
-    ? createUpdateStatus(this.currentVersion, "idle")
-    : createUpdateStatus(this.currentVersion, "unsupported", {
-        message: getUnsupportedMessage(),
-      })
+  private status: UpdateStatus
 
   private availableVersion: string | null = null
   private checkPromise: Promise<UpdateStatus> | null = null
   private downloadPromise: Promise<UpdateStatus> | null = null
 
-  constructor(updater: AppUpdater = autoUpdater) {
-    this.updater = updater
+  constructor(updater?: AppUpdater) {
+    this.updater = updater ?? getAutoUpdater()
+    this.currentVersion = app.getVersion()
+    this.supported = isUpdaterSupported(process.platform, app.isPackaged, process.resourcesPath)
+    this.status = this.supported
+      ? createUpdateStatus(this.currentVersion, "idle")
+      : createUpdateStatus(this.currentVersion, "unsupported", {
+          message: getUnsupportedMessage(),
+        })
 
     if (!this.supported) {
       return

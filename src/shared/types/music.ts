@@ -87,6 +87,7 @@ export type CatalogTrack = {
   title: string
   artist: string
   artistDeezerId?: number
+  features: string[]
   album: string | null
   albumDeezerId?: number
   artworkUrl: string | null

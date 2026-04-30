@@ -32,28 +32,42 @@ function runMigrations(db: DatabaseConnection): void {
 
   const sourceMigrationsDir = join(app.getAppPath(), "drizzle", "migrations")
 
-  baselineExistingDatabase(db)
-
-  if (existsSync(sourceMigrationsDir)) {
-    mkdirSync(migrationsDir, { recursive: true })
-    function copyDirRecursive(src: string, dest: string): void {
-      mkdirSync(dest, { recursive: true })
-      for (const entry of readdirSync(src)) {
-        const sourcePath = join(src, entry)
-        const destPath = join(dest, entry)
-        if (lstatSync(sourcePath).isDirectory()) {
-          copyDirRecursive(sourcePath, destPath)
-        } else {
-          copyFileSync(sourcePath, destPath)
-        }
-      }
-    }
-
-    copyDirRecursive(sourceMigrationsDir, migrationsDir)
+  if (!hasMigrationFiles(sourceMigrationsDir)) {
+    throw new Error(`Drizzle migrations were not found at ${sourceMigrationsDir}`)
   }
+
+  baselineExistingDatabase(db)
+  rmSync(migrationsDir, { recursive: true, force: true })
+  copyDirRecursive(sourceMigrationsDir, migrationsDir)
 
   const drizzleDb = drizzle({ client: db, schema })
   migrate(drizzleDb, { migrationsFolder: migrationsDir })
+}
+
+function hasMigrationFiles(dir: string): boolean {
+  if (!existsSync(dir)) return false
+
+  for (const entry of readdirSync(dir)) {
+    const migrationPath = join(dir, entry, "migration.sql")
+    if (existsSync(migrationPath)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function copyDirRecursive(src: string, dest: string): void {
+  mkdirSync(dest, { recursive: true })
+  for (const entry of readdirSync(src)) {
+    const sourcePath = join(src, entry)
+    const destPath = join(dest, entry)
+    if (lstatSync(sourcePath).isDirectory()) {
+      copyDirRecursive(sourcePath, destPath)
+    } else {
+      copyFileSync(sourcePath, destPath)
+    }
+  }
 }
 
 function baselineExistingDatabase(db: DatabaseConnection): void {

@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import { is } from "@electron-toolkit/utils"
 import { app, BrowserWindow, Menu } from "electron"
 import log from "electron-log/main.js"
 import { ipcChannels } from "../shared/contracts/ipc"
@@ -150,7 +149,7 @@ async function createWindow(): Promise<void> {
     }
   )
 
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     await window.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     await window.loadFile(join(__dirname, "../renderer/index.html"))
@@ -159,7 +158,7 @@ async function createWindow(): Promise<void> {
   void updater.checkForUpdates()
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(createWindow).catch(handleStartupError)
 
 app.on("before-quit", shutdownPlayer)
 
@@ -185,3 +184,9 @@ process.once("SIGTERM", () => {
   shutdownPlayer()
   app.quit()
 })
+
+function handleStartupError(error: unknown): void {
+  log.error("Loopify failed to start.", error)
+  shutdownPlayer()
+  app.quit()
+}
