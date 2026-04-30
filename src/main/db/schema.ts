@@ -107,7 +107,7 @@ export const resolverCache = sqliteTable(
   "resolver_cache",
   {
     id: text("id").primaryKey(),
-    sourceUrl: text("source_url").notNull(),
+    sourceUrl: text("source_url").notNull().unique(),
     provider: text("provider").notNull(),
     streamUrl: text("stream_url"),
     metadataJson: text("metadata_json"),

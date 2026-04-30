@@ -333,6 +333,32 @@ export class LibraryRepository {
     return map
   }
 
+  findDownloadSourceUrlForTrack(trackId: string): string | null {
+    const rows = this.db
+      .select({
+        sourceUrl: schema.trackSources.sourceUrl,
+        provider: schema.trackSources.provider,
+      })
+      .from(schema.trackSources)
+      .where(eq(schema.trackSources.trackId, trackId))
+      .all()
+    if (rows.length === 0) return null
+
+    const providerPriority: Record<string, number> = {
+      youtube: 0,
+      soundcloud: 1,
+      bandcamp: 2,
+      direct: 3,
+      unknown: 4,
+    }
+    const sorted = [...rows].sort((a, b) => {
+      const left = providerPriority[a.provider] ?? Number.MAX_SAFE_INTEGER
+      const right = providerPriority[b.provider] ?? Number.MAX_SAFE_INTEGER
+      return left - right
+    })
+    return sorted[0]?.sourceUrl ?? null
+  }
+
   findArtistByDeezerId(deezerId: number): DbArtist | undefined {
     return this.db.select().from(schema.artists).where(eq(schema.artists.deezerId, deezerId)).get()
   }
@@ -1078,16 +1104,10 @@ export class ResolverCacheRepository {
     }
   ): void {
     const timestamp = now()
-    const existing = this.db
-      .select({ id: schema.resolverCache.id })
-      .from(schema.resolverCache)
-      .where(eq(schema.resolverCache.sourceUrl, sourceUrl))
-      .get()
-    const idValue = existing?.id ?? id("rc")
     this.db
       .insert(schema.resolverCache)
       .values({
-        id: idValue,
+        id: id("rc"),
         sourceUrl,
         provider: resolved.candidate.provider,
         streamUrl: resolved.streamUrl,
@@ -1100,7 +1120,7 @@ export class ResolverCacheRepository {
         updatedAt: timestamp,
       })
       .onConflictDoUpdate({
-        target: schema.resolverCache.id,
+        target: schema.resolverCache.sourceUrl,
         set: {
           sourceUrl,
           provider: resolved.candidate.provider,

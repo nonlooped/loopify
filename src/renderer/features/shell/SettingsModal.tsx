@@ -81,7 +81,9 @@ export function SettingsModal() {
       ),
       deezerMatchThreshold: n("deezerMatchThreshold", settings.deezerMatchThreshold),
       importProgressThrottle: n("importProgressThrottle", settings.importProgressThrottle),
-      discordPresenceEnabled: formData.get("discordPresenceEnabled") === "on",
+      discordPresenceEnabled: formData.has("discordPresenceEnabled")
+        ? formData.get("discordPresenceEnabled") === "on"
+        : settings.discordPresenceEnabled,
     }
 
     setIsSaving(true)

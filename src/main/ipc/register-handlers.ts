@@ -33,6 +33,8 @@ type HandlerDeps = {
   updater: UpdaterService
 }
 
+let cleanupPreviousHandlers: (() => void) | null = null
+
 const nonEmptyString = z.string().trim().min(1)
 const nullableNonEmptyString = z.string().trim().min(1).nullable()
 const catalogTrackSchema = z.object({
@@ -76,6 +78,19 @@ const trackCandidateSchema = z.object({
 })
 
 export function registerIpcHandlers(deps: HandlerDeps): void {
+  cleanupPreviousHandlers?.()
+  cleanupPreviousHandlers = null
+
+  const ipcOn = (channel: string, listener: Parameters<typeof ipcMain.on>[1]) => {
+    ipcMain.removeAllListeners(channel)
+    ipcMain.on(channel, listener)
+  }
+
+  const ipcHandle = (channel: string, listener: Parameters<typeof ipcMain.handle>[1]) => {
+    ipcMain.removeHandler(channel)
+    ipcMain.handle(channel, listener)
+  }
+
   const emitQueue = (): QueueItem[] => {
     const queue = deps.queue.list()
     deps.window.webContents.send(ipcChannels.queueChanged, queue)
@@ -83,18 +98,20 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   }
 
   // ── Window controls ────────────────────────────────────────────────
-  ipcMain.on(ipcChannels.windowMinimize, () => deps.window.minimize())
-  ipcMain.on(ipcChannels.windowMaximize, () => deps.window.maximize())
-  ipcMain.on(ipcChannels.windowUnmaximize, () => deps.window.unmaximize())
-  ipcMain.on(ipcChannels.windowClose, () => deps.window.close())
-  ipcMain.handle(ipcChannels.windowIsMaximized, () => deps.window.isMaximized())
+  ipcOn(ipcChannels.windowMinimize, () => deps.window.minimize())
+  ipcOn(ipcChannels.windowMaximize, () => deps.window.maximize())
+  ipcOn(ipcChannels.windowUnmaximize, () => deps.window.unmaximize())
+  ipcOn(ipcChannels.windowClose, () => deps.window.close())
+  ipcHandle(ipcChannels.windowIsMaximized, () => deps.window.isMaximized())
 
-  deps.window.on("maximize", () => {
+  const onWindowMaximize = () => {
     deps.window.webContents.send(ipcChannels.windowMaximizedChanged, true)
-  })
-  deps.window.on("unmaximize", () => {
+  }
+  const onWindowUnmaximize = () => {
     deps.window.webContents.send(ipcChannels.windowMaximizedChanged, false)
-  })
+  }
+  deps.window.on("maximize", onWindowMaximize)
+  deps.window.on("unmaximize", onWindowUnmaximize)
 
   const getDownloadedPlaybackPath = (track: Track): string | null => {
     if (track.downloadStatus !== "downloaded" || !track.downloadedFilePath) {
@@ -207,10 +224,10 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     deps.window.webContents.send(ipcChannels.playerStateChanged, deps.player.getState())
   })
 
-  ipcMain.handle(ipcChannels.playerGetState, () => deps.player.getState())
-  ipcMain.handle(ipcChannels.playerPause, () => deps.player.pause())
-  ipcMain.handle(ipcChannels.playerResume, () => deps.player.resume())
-  ipcMain.handle(ipcChannels.playerStop, async () => {
+  ipcHandle(ipcChannels.playerGetState, () => deps.player.getState())
+  ipcHandle(ipcChannels.playerPause, () => deps.player.pause())
+  ipcHandle(ipcChannels.playerResume, () => deps.player.resume())
+  ipcHandle(ipcChannels.playerStop, async () => {
     const state = deps.player.getState()
     if (!state.queueItemId) {
       return deps.player.stop()
@@ -222,39 +239,42 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
 
     return deps.player.seek(0)
   })
-  ipcMain.handle(ipcChannels.playerSeek, (_event, seconds) =>
+  ipcHandle(ipcChannels.playerSeek, (_event, seconds) =>
     deps.player.seek(z.number().min(0).parse(seconds))
   )
-  ipcMain.handle(ipcChannels.playerSetVolume, (_event, volume) =>
+  ipcHandle(ipcChannels.playerSetVolume, (_event, volume) =>
     deps.player.setVolume(z.number().min(0).max(100).parse(volume))
   )
-  ipcMain.handle(ipcChannels.playerSetRepeatMode, (_event, mode) =>
+  ipcHandle(ipcChannels.playerSetRepeatMode, (_event, mode) =>
     deps.player.setRepeatMode(repeatModeSchema.parse(mode) as RepeatMode)
   )
-  ipcMain.handle(ipcChannels.playerPlay, (_event, queueItemId) => playQueueItem(queueItemId))
+  ipcHandle(ipcChannels.playerPlay, (_event, queueItemId) => playQueueItem(queueItemId))
 
-  ipcMain.handle(ipcChannels.searchQuery, (_event, input) => {
+  ipcHandle(ipcChannels.searchQuery, (_event, input) => {
     const parsed = z
       .object({ text: nonEmptyString, providers: z.array(z.string()).optional() })
       .parse(input)
+    if (parsed.providers && parsed.providers.length > 0 && !parsed.providers.includes("deezer")) {
+      return []
+    }
     return deps.resolver.search(parsed.text)
   })
-  ipcMain.handle(ipcChannels.searchQueryTracks, (_event, q) =>
+  ipcHandle(ipcChannels.searchQueryTracks, (_event, q) =>
     deps.resolver.searchTracks(nonEmptyString.parse(q))
   )
-  ipcMain.handle(ipcChannels.searchQueryArtists, (_event, q) =>
+  ipcHandle(ipcChannels.searchQueryArtists, (_event, q) =>
     deps.resolver.searchArtists(nonEmptyString.parse(q))
   )
-  ipcMain.handle(ipcChannels.searchQueryAlbums, (_event, q) =>
+  ipcHandle(ipcChannels.searchQueryAlbums, (_event, q) =>
     deps.resolver.searchAlbums(nonEmptyString.parse(q))
   )
-  ipcMain.handle(ipcChannels.catalogGetArtist, (_event, deezerId) =>
+  ipcHandle(ipcChannels.catalogGetArtist, (_event, deezerId) =>
     deps.resolver.getArtist(z.number().int().positive().parse(deezerId))
   )
-  ipcMain.handle(ipcChannels.catalogGetAlbum, (_event, deezerId) =>
+  ipcHandle(ipcChannels.catalogGetAlbum, (_event, deezerId) =>
     deps.resolver.getAlbum(z.number().int().positive().parse(deezerId))
   )
-  ipcMain.handle(ipcChannels.catalogGetTrackNavInfo, async (_event, trackId) => {
+  ipcHandle(ipcChannels.catalogGetTrackNavInfo, async (_event, trackId) => {
     const parsedTrackId = nonEmptyString.parse(trackId)
     const local = deps.library.getTrackNavInfo(parsedTrackId)
     if (local?.albumDeezerId != null || local?.artistDeezerId != null) {
@@ -279,15 +299,15 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       return null
     }
   })
-  ipcMain.handle(ipcChannels.resolverResolve, (_event, input) =>
+  ipcHandle(ipcChannels.resolverResolve, (_event, input) =>
     deps.resolver.resolve(nonEmptyString.parse(input))
   )
-  ipcMain.handle(ipcChannels.resolverResolveCatalog, (_event, input) =>
+  ipcHandle(ipcChannels.resolverResolveCatalog, (_event, input) =>
     deps.resolver.resolveCatalog(catalogTrackSchema.parse(input) as CatalogTrack)
   )
 
-  ipcMain.handle(ipcChannels.queueList, () => deps.queue.list())
-  ipcMain.handle(ipcChannels.queueAdd, async (_event, input) => {
+  ipcHandle(ipcChannels.queueList, () => deps.queue.list())
+  ipcHandle(ipcChannels.queueAdd, async (_event, input) => {
     const parsed = z
       .object({ sourceUrl: nonEmptyString, playNow: z.boolean().optional() })
       .parse(input)
@@ -311,7 +331,7 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     }
     return queue
   })
-  ipcMain.handle(ipcChannels.queueAddMany, async (_event, input) => {
+  ipcHandle(ipcChannels.queueAddMany, async (_event, input) => {
     const parsed = z
       .object({
         sourceUrls: z.array(nonEmptyString),
@@ -353,7 +373,7 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     }
     return maybeStartFirstQueuedItem()
   })
-  ipcMain.handle(ipcChannels.queueRemove, (_event, id) => {
+  ipcHandle(ipcChannels.queueRemove, (_event, id) => {
     const queueItemId = nonEmptyString.parse(id)
     const currentQueueItemId = deps.player.getState().queueItemId
     const nextId = currentQueueItemId === queueItemId ? deps.queue.nextItemId(queueItemId) : null
@@ -375,18 +395,18 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       return emitQueue()
     })
   })
-  ipcMain.handle(ipcChannels.queueMove, (_event, id, sortOrder) => {
+  ipcHandle(ipcChannels.queueMove, (_event, id, sortOrder) => {
     deps.queue.move(nonEmptyString.parse(id), z.number().int().min(0).parse(sortOrder))
     return emitQueue()
   })
-  ipcMain.handle(ipcChannels.queueShuffle, () => {
+  ipcHandle(ipcChannels.queueShuffle, () => {
     const { queueItemId, status } = deps.player.getState()
     const anchorActive =
       queueItemId && (status === "playing" || status === "paused" || status === "loading")
     deps.queue.shuffle(anchorActive ? queueItemId : null)
     return emitQueue()
   })
-  ipcMain.handle(ipcChannels.queueClear, async () => {
+  ipcHandle(ipcChannels.queueClear, async () => {
     await deps.player.stop()
     deps.queue.clear()
     return emitQueue()
@@ -396,17 +416,17 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     console.error("Failed to reconcile queued playback on startup", err)
   })
 
-  ipcMain.handle(ipcChannels.playlistsList, () => deps.library.listPlaylists())
-  ipcMain.handle(ipcChannels.playlistsCreate, (_event, name) =>
+  ipcHandle(ipcChannels.playlistsList, () => deps.library.listPlaylists())
+  ipcHandle(ipcChannels.playlistsCreate, (_event, name) =>
     deps.library.createPlaylist(nonEmptyString.parse(name))
   )
-  ipcMain.handle(ipcChannels.playlistsRename, (_event, id, name) =>
+  ipcHandle(ipcChannels.playlistsRename, (_event, id, name) =>
     deps.library.renamePlaylist(nonEmptyString.parse(id), nonEmptyString.parse(name))
   )
-  ipcMain.handle(ipcChannels.playlistsDelete, (_event, id) =>
+  ipcHandle(ipcChannels.playlistsDelete, (_event, id) =>
     deps.library.deletePlaylist(nonEmptyString.parse(id))
   )
-  ipcMain.handle(ipcChannels.playlistsAddTrack, async (_event, playlistId, sourceUrl) => {
+  ipcHandle(ipcChannels.playlistsAddTrack, async (_event, playlistId, sourceUrl) => {
     const validatedUrl = nonEmptyString.parse(sourceUrl)
     const validatedPlaylistId = nonEmptyString.parse(playlistId)
     const existing =
@@ -420,13 +440,13 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     const track = deps.library.upsertTrack(resolved.candidate)
     return deps.library.addTrackToPlaylist(validatedPlaylistId, track.id, validatedUrl)
   })
-  ipcMain.handle(ipcChannels.playlistsRemoveTrack, (_event, playlistId, entryId) =>
+  ipcHandle(ipcChannels.playlistsRemoveTrack, (_event, playlistId, entryId) =>
     deps.library.removeTrackFromPlaylist(
       nonEmptyString.parse(playlistId),
       nonEmptyString.parse(entryId)
     )
   )
-  ipcMain.handle(ipcChannels.playlistsMoveTrack, (_event, playlistId, entryId, newIndex) =>
+  ipcHandle(ipcChannels.playlistsMoveTrack, (_event, playlistId, entryId, newIndex) =>
     deps.library.moveTrackInPlaylist(
       nonEmptyString.parse(playlistId),
       nonEmptyString.parse(entryId),
@@ -434,52 +454,52 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     )
   )
 
-  ipcMain.handle(ipcChannels.tracksSetLiked, (_event, trackId, liked) =>
+  ipcHandle(ipcChannels.tracksSetLiked, (_event, trackId, liked) =>
     deps.library.setTrackLiked(nonEmptyString.parse(trackId), z.boolean().parse(liked))
   )
-  ipcMain.handle(ipcChannels.tracksSetCandidateLiked, (_event, candidate, liked) =>
+  ipcHandle(ipcChannels.tracksSetCandidateLiked, (_event, candidate, liked) =>
     deps.library.setCandidateLiked(
       trackCandidateSchema.parse(candidate) as TrackCandidate,
       z.boolean().parse(liked)
     )
   )
 
-  ipcMain.handle(ipcChannels.downloadsDownloadTrack, (_event, trackId) =>
+  ipcHandle(ipcChannels.downloadsDownloadTrack, (_event, trackId) =>
     deps.downloads.downloadTrack(nonEmptyString.parse(trackId))
   )
-  ipcMain.handle(ipcChannels.downloadsDownloadCandidate, (_event, candidate) =>
+  ipcHandle(ipcChannels.downloadsDownloadCandidate, (_event, candidate) =>
     deps.downloads.downloadCandidate(trackCandidateSchema.parse(candidate) as TrackCandidate)
   )
-  ipcMain.handle(ipcChannels.downloadsDownloadPlaylist, (_event, playlistId) =>
+  ipcHandle(ipcChannels.downloadsDownloadPlaylist, (_event, playlistId) =>
     deps.downloads.downloadPlaylist(nonEmptyString.parse(playlistId))
   )
-  ipcMain.handle(ipcChannels.downloadsRemoveTrack, (_event, trackId) =>
+  ipcHandle(ipcChannels.downloadsRemoveTrack, (_event, trackId) =>
     deps.downloads.removeTrackDownload(nonEmptyString.parse(trackId))
   )
 
-  ipcMain.handle(ipcChannels.importsStart, (_event, input) => {
+  ipcHandle(ipcChannels.importsStart, (_event, input) => {
     const parsed = z
       .object({ url: nonEmptyString, targetPlaylistId: z.string().nullable() })
       .parse(input)
     return deps.imports.start(parsed.url, parsed.targetPlaylistId)
   })
-  ipcMain.handle(ipcChannels.importsGetStatus, (_event, id) =>
+  ipcHandle(ipcChannels.importsGetStatus, (_event, id) =>
     deps.imports.getStatus(nonEmptyString.parse(id))
   )
 
-  ipcMain.handle(ipcChannels.lyricsGetForTrack, (_event, track) =>
+  ipcHandle(ipcChannels.lyricsGetForTrack, (_event, track) =>
     deps.lyrics.getForTrack(playerTrackSchema.parse(track) as PlayerTrack)
   )
 
-  ipcMain.handle(ipcChannels.settingsGet, () => deps.settings.get())
-  ipcMain.handle(ipcChannels.settingsGetVersion, () => app.getVersion())
-  ipcMain.handle(ipcChannels.settingsGetUpdateStatus, () => deps.updater.getStatus())
-  ipcMain.handle(ipcChannels.settingsCheckForUpdates, () => deps.updater.checkForUpdates())
-  ipcMain.handle(ipcChannels.settingsDownloadUpdate, () => deps.updater.downloadUpdate())
-  ipcMain.handle(ipcChannels.settingsInstallUpdate, () => {
+  ipcHandle(ipcChannels.settingsGet, () => deps.settings.get())
+  ipcHandle(ipcChannels.settingsGetVersion, () => app.getVersion())
+  ipcHandle(ipcChannels.settingsGetUpdateStatus, () => deps.updater.getStatus())
+  ipcHandle(ipcChannels.settingsCheckForUpdates, () => deps.updater.checkForUpdates())
+  ipcHandle(ipcChannels.settingsDownloadUpdate, () => deps.updater.downloadUpdate())
+  ipcHandle(ipcChannels.settingsInstallUpdate, () => {
     deps.updater.installUpdate()
   })
-  ipcMain.handle(ipcChannels.settingsUpdate, (_event, patch) => {
+  ipcHandle(ipcChannels.settingsUpdate, (_event, patch) => {
     const parsed = z
       .object({
         mpvPath: z.string().optional(),
@@ -501,4 +521,9 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     deps.presence.sync(deps.player.getState())
     return updated
   })
+
+  cleanupPreviousHandlers = () => {
+    deps.window.off("maximize", onWindowMaximize)
+    deps.window.off("unmaximize", onWindowUnmaximize)
+  }
 }

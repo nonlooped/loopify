@@ -30,13 +30,13 @@ export class DownloadService {
     if (!track) {
       throw new Error("Track was not found.")
     }
-    void this.start(track)
+    void this.limit(() => this.start(track))
     return this.emit(this.library.setDownloadQueued(track.id))
   }
 
   async downloadCandidate(candidate: TrackCandidate): Promise<Track> {
     const track = this.library.upsertTrack(candidate)
-    void this.start(track)
+    void this.limit(() => this.start(track))
     return this.emit(this.library.setDownloadQueued(track.id))
   }
 
@@ -84,6 +84,7 @@ export class DownloadService {
   private runYtdlp(track: Track): Promise<string> {
     const outputTemplate = join(this.downloadsDir, `${track.id}.%(ext)s`)
     const settings = this.settings.get()
+    const sourceUrl = this.library.findDownloadSourceUrlForTrack(track.id) ?? track.canonicalUrl
 
     return new Promise((resolve, reject) => {
       const child = spawn(
@@ -96,7 +97,7 @@ export class DownloadService {
           "bestaudio/best",
           "--output",
           outputTemplate,
-          track.canonicalUrl,
+          sourceUrl,
         ],
         { stdio: ["ignore", "pipe", "pipe"] }
       )

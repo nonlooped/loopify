@@ -291,7 +291,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
       set({ playerState: newState, lastPlayerState: newState })
       if (shouldRefreshCollections) {
         get().refreshQueue().catch(console.error)
-        get().refreshPlaylists().catch(console.error)
       }
     })
 
