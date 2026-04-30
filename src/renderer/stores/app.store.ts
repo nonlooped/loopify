@@ -135,6 +135,7 @@ interface AppState {
 
   isSettingsOpen: boolean
   isImportOpen: boolean
+  isShortcutsOpen: boolean
   isQueueOpen: boolean
   isSidebarExpanded: boolean
   playlistAction: PlaylistActionState | null
@@ -212,6 +213,7 @@ interface AppState {
   toggleSearch: (open?: boolean) => void
   toggleSettings: (open?: boolean) => void
   toggleImport: (open?: boolean) => void
+  toggleShortcuts: (open?: boolean) => void
   toggleQueue: (open?: boolean) => void
   toggleSidebar: (open?: boolean) => void
   setShellReveal: (v: boolean) => void
@@ -236,6 +238,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   isSettingsOpen: false,
   isImportOpen: false,
+  isShortcutsOpen: false,
   isQueueOpen: false,
   isSidebarExpanded: false,
   playlistAction: null,
@@ -857,6 +860,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   toggleImport: (open) => {
     set((state) => ({ isImportOpen: open ?? !state.isImportOpen }))
+  },
+
+  toggleShortcuts: (open) => {
+    set((state) => ({ isShortcutsOpen: open ?? !state.isShortcutsOpen }))
   },
 
   toggleQueue: (open) => {

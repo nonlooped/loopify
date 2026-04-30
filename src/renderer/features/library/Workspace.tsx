@@ -45,6 +45,8 @@ const WORKSPACE_VIEW_TRANSITION = "workspace-page"
 type PlaylistSortField = "position" | "title" | "dateAdded" | "duration"
 type PlaylistSortDirection = "asc" | "desc"
 
+type CollectionSortField = "name" | "count" | "duration" | "recent"
+
 function playlistArtworkTransitionName(playlistId: string) {
   return `playlist-artwork-${playlistId}`
 }
@@ -87,6 +89,36 @@ export function Workspace() {
   const [sortDirection, setSortDirection] = useState<PlaylistSortDirection>("asc")
   const [trackDropPlaylistId, setTrackDropPlaylistId] = useState<string | null>(null)
   const [isTrackDropOverOpen, setIsTrackDropOverOpen] = useState(false)
+
+  // Collection (Playlists Grid) state
+  const [playlistFilter, setPlaylistFilter] = useState("")
+  const [collectionSort, setCollectionSort] = useState<CollectionSortField>("name")
+
+  const filteredAndSortedPlaylists = useMemo(() => {
+    let result = [...playlists]
+
+    // 1. Filter
+    if (playlistFilter.trim()) {
+      const q = playlistFilter.toLowerCase()
+      result = result.filter((p) => p.name.toLowerCase().includes(q))
+    }
+
+    // 2. Sort
+    result.sort((a, b) => {
+      if (collectionSort === "name") return a.name.localeCompare(b.name)
+      if (collectionSort === "count") return (b.tracks?.length || 0) - (a.tracks?.length || 0)
+      if (collectionSort === "duration") return (b.totalDurationMs || 0) - (a.totalDurationMs || 0)
+      if (collectionSort === "recent") {
+        // System playlists stay at top, then by most recent tracks if possible, else name
+        if (isSystemPlaylistId(a.id) && !isSystemPlaylistId(b.id)) return -1
+        if (!isSystemPlaylistId(a.id) && isSystemPlaylistId(b.id)) return 1
+        return a.name.localeCompare(b.name)
+      }
+      return 0
+    })
+
+    return result
+  }, [playlists, playlistFilter, collectionSort])
 
   const handlePlaylistCardDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>, playlistId: string) => {
@@ -203,62 +235,99 @@ export function Workspace() {
         >
           <div className="mb-6 flex flex-col gap-4 sm:mb-8">
             <h1 className="type-heading m-0 text-foreground sm:text-[1.75rem]">Collection</h1>
-            <button
-              type="button"
-              onClick={() => useAppStore.getState().toggleSearch(true)}
-              className="flex w-full max-w-md cursor-pointer items-center gap-3 rounded-xl border border-border bg-raised px-4 py-3 text-left transition-colors duration-ui ease-out-quart hover:border-white/20 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              <Search className="h-4 w-4 shrink-0 text-subtle" />
-              <span className="type-body-sm text-subtle">Search tracks or paste a URL...</span>
-              <span className="type-meta ml-auto shrink-0 text-subtle">
-                {formatModShortcut("K")}
-              </span>
-            </button>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative flex w-full max-w-md items-center">
+                <Search className="absolute left-3 h-4 w-4 shrink-0 text-subtle" />
+                <input
+                  type="text"
+                  placeholder="Filter playlists..."
+                  value={playlistFilter}
+                  onChange={(e) => setPlaylistFilter(e.target.value)}
+                  className="type-body-sm w-full rounded-xl border border-border bg-raised py-2.5 pl-10 pr-4 text-foreground placeholder:text-subtle transition-colors duration-ui ease-out-quart hover:border-white/20 focus:border-accent focus:bg-white/[0.04] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="type-meta text-subtle">Sort by:</span>
+                <select
+                  value={collectionSort}
+                  onChange={(e) => setCollectionSort(e.target.value as CollectionSortField)}
+                  className="type-meta cursor-pointer rounded-lg border border-border bg-raised px-2 py-1.5 text-foreground transition-colors duration-ui ease-out-quart hover:border-white/20 focus:border-accent focus:outline-none"
+                >
+                  <option value="name">Name</option>
+                  <option value="count">Track Count</option>
+                  <option value="duration">Duration</option>
+                  <option value="recent">Recently Added</option>
+                </select>
+                <div className="h-4 w-px bg-border/40" />
+                <button
+                  type="button"
+                  onClick={() => useAppStore.getState().toggleSearch(true)}
+                  title={`Global search (${formatModShortcut("K")})`}
+                  className="type-meta flex items-center gap-2 rounded-lg border border-border bg-raised px-3 py-1.5 text-subtle transition-colors duration-ui ease-out-quart hover:border-white/20 hover:text-foreground"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  Global {formatModShortcut("K")}
+                </button>
+              </div>
+            </div>
           </div>
           {playlists.length === 0 ? (
             <EmptyState
               className="mx-auto max-w-3xl"
               icon={<Library className="h-7 w-7" aria-hidden strokeWidth={1.35} />}
               eyebrow="Library"
-              title="Start your collection with something worth replaying"
-              description="Playlists live on this computer, so imports, quick finds, and saved sets stay close at hand. Search to play immediately, import an existing list, or create an empty playlist for a slower build."
+              title="Build your personal collection"
+              description="Playlists live on this device, so imports and saves stay private and fast. Start by searching for your favorite tracks or importing a playlist from Spotify or YouTube."
               actions={
-                <>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Button
                     type="button"
                     size="lg"
-                    className="gap-2 sm:min-w-44"
+                    className="h-12 gap-3 px-8 sm:min-w-52"
                     onClick={() => useAppStore.getState().toggleSearch(true)}
                   >
-                    <Search className="h-4 w-4" aria-hidden />
-                    Search ({formatModShortcut("K")})
+                    <Search className="h-5 w-5" aria-hidden />
+                    Search tracks ({formatModShortcut("K")})
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     size="lg"
-                    className="gap-2 border-border sm:min-w-44"
+                    className="h-12 gap-3 border-border px-8 sm:min-w-52"
                     onClick={() => useAppStore.getState().toggleImport(true)}
                   >
-                    <Download className="h-4 w-4" aria-hidden />
+                    <Download className="h-5 w-5" aria-hidden />
                     Import playlist
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="lg"
-                    className="gap-2 sm:min-w-44"
+                    className="h-12 gap-3 px-6"
                     onClick={handleCreatePlaylist}
                   >
-                    <Plus className="h-4 w-4" aria-hidden />
-                    New playlist
+                    <Plus className="h-5 w-5" aria-hidden />
+                    Create empty
                   </Button>
-                </>
+                </div>
+              }
+            />
+          ) : filteredAndSortedPlaylists.length === 0 ? (
+            <EmptyState
+              density="compact"
+              title="No playlists found"
+              description={`No playlists match "${playlistFilter}". Try a different filter or clear the search.`}
+              actions={
+                <Button variant="ghost" size="sm" onClick={() => setPlaylistFilter("")}>
+                  Clear Filter
+                </Button>
               }
             />
           ) : (
             <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {playlists.map((p) => (
+              {filteredAndSortedPlaylists.map((p) => (
                 // biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop target container for track-to-playlist drops
                 <div
                   key={p.id}
@@ -632,6 +701,7 @@ function PlaylistSortControl({
           type="button"
           key={value}
           onClick={() => onFieldChange(value)}
+          aria-pressed={field === value}
           className={cn(
             "type-label cursor-pointer rounded-lg px-3 py-2 transition-colors duration-ui ease-out-quart focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
             field === value ? "bg-white/10 text-foreground" : "text-muted hover:bg-white/5"

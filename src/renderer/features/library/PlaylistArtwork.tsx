@@ -22,6 +22,21 @@ function TrackTile({ thumbnailUrl }: { thumbnailUrl: string | null }) {
   )
 }
 
+function ArtworkScrim({ type, zIndex }: { type: "bottom" | "top"; zIndex?: string }) {
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-0",
+        zIndex,
+        type === "bottom"
+          ? "bg-linear-to-t from-surface via-surface/35 to-transparent"
+          : "bg-linear-to-b from-canvas/80 via-canvas/35 to-transparent"
+      )}
+      aria-hidden
+    />
+  )
+}
+
 function SystemPlaylistMark({
   kind,
   className,
@@ -40,12 +55,12 @@ function SystemPlaylistMark({
     >
       {kind === "liked" ? (
         <div
-          className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_32%_28%,oklch(0.65_0.02_260_/_0.5),transparent_50%),radial-gradient(circle_at_78%_80%,oklch(0.35_0.02_260_/_0.4),transparent_45%),linear-gradient(155deg,oklch(0.2_0.01_260),oklch(0.1_0.01_260))]"
+          className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_32%_28%,oklch(from_var(--color-accent)_0.65_0.02_h_/_0.5),transparent_50%),radial-gradient(circle_at_78%_80%,oklch(from_var(--color-accent)_0.35_0.02_h_/_0.4),transparent_45%),linear-gradient(155deg,oklch(from_var(--color-accent)_0.2_0.01_h),oklch(from_var(--color-accent)_0.1_0.01_h))]"
           aria-hidden
         />
       ) : (
         <div
-          className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_32%,oklch(0.6_0.1_260_/_0.45),transparent_50%),radial-gradient(circle_at_72%_70%,oklch(0.45_0.08_260_/_0.35),transparent_48%),linear-gradient(150deg,oklch(0.18_0.04_260),oklch(0.1_0.04_260))]"
+          className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_32%,oklch(from_var(--color-accent)_0.6_0.1_h_/_0.45),transparent_50%),radial-gradient(circle_at_72%_70%,oklch(from_var(--color-accent)_0.45_0.08_h_/_0.35),transparent_48%),linear-gradient(150deg,oklch(from_var(--color-accent)_0.18_0.04_h),oklch(from_var(--color-accent)_0.1_0.04_h))]"
           aria-hidden
         />
       )}
@@ -62,17 +77,7 @@ function SystemPlaylistMark({
           <HardDrive className="h-full w-full max-h-[68%] max-w-[68%] stroke-2 text-accent/90" />
         )}
       </div>
-      {scrim === "bottom" ? (
-        <div
-          className="pointer-events-none absolute inset-0 z-[2] bg-linear-to-t from-surface via-surface/35 to-transparent"
-          aria-hidden
-        />
-      ) : scrim === "top" ? (
-        <div
-          className="pointer-events-none absolute inset-0 z-[2] bg-linear-to-b from-canvas/80 via-canvas/35 to-transparent"
-          aria-hidden
-        />
-      ) : null}
+      {scrim && <ArtworkScrim type={scrim} zIndex="z-[2]" />}
     </div>
   )
 }
@@ -159,17 +164,7 @@ export function PlaylistArtwork({
           ))}
         </div>
       )}
-      {scrim === "bottom" ? (
-        <div
-          className="pointer-events-none absolute inset-0 bg-linear-to-t from-surface via-surface/35 to-transparent"
-          aria-hidden
-        />
-      ) : scrim === "top" ? (
-        <div
-          className="pointer-events-none absolute inset-0 bg-linear-to-b from-black/80 via-black/35 to-transparent"
-          aria-hidden
-        />
-      ) : null}
+      {scrim && <ArtworkScrim type={scrim} />}
     </div>
   )
 }

@@ -157,7 +157,11 @@ export function SettingsModal() {
                     <X className="h-5 w-5" />
                   </button>
                 </div>
-                <div className="mt-4 flex gap-6 border-b border-border px-6 sm:px-8 overflow-x-auto no-scrollbar">
+                <div
+                  className="mt-4 flex gap-6 border-b border-border px-6 sm:px-8 overflow-x-auto no-scrollbar"
+                  role="tablist"
+                  aria-label="Settings sections"
+                >
                   {(["General", "Features", "Shortcuts", "Advanced", "Info"] as const).map(
                     (tab) => {
                       const id = tab.toLowerCase() as typeof activeTab
@@ -165,6 +169,10 @@ export function SettingsModal() {
                         <button
                           key={id}
                           type="button"
+                          role="tab"
+                          id={`tab-${id}`}
+                          aria-selected={activeTab === id}
+                          aria-controls={`panel-${id}`}
                           onClick={() => setActiveTab(id)}
                           className={`whitespace-nowrap border-b-2 px-1 pb-3 type-body-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                             activeTab === id
@@ -181,7 +189,12 @@ export function SettingsModal() {
               </div>
 
               <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-10">
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-10"
+                  role="tabpanel"
+                  id={`panel-${activeTab}`}
+                  aria-labelledby={`tab-${activeTab}`}
+                >
                   {activeTab === "general" && (
                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <section className="space-y-8">

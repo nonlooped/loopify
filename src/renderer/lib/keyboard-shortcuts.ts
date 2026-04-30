@@ -62,6 +62,7 @@ export type AppKeyboardShortcutDeps = {
   onOpenSearch: () => void
   onOpenSettings: () => void
   onOpenImport: () => void
+  onOpenShortcuts: () => void
   onToggleQueue: () => void
   onToggleSidebar: () => void
   onNewPlaylist: () => void
@@ -78,6 +79,7 @@ export type AppKeyboardShortcutDeps = {
   isSearchOpen: boolean
   isSettingsOpen: boolean
   isImportOpen: boolean
+  isShortcutsOpen: boolean
   playlistActionOpen: boolean
   canShuffleQueue: boolean
   hasNext: boolean
@@ -117,6 +119,14 @@ function handleGlobalShortcuts(
   ctx: KeyContext,
   d: AppKeyboardShortcutDeps
 ): boolean | undefined {
+  // Standalone keys
+  if (!ctx.typable && !ctx.hasMod) {
+    if (e.key === "?") {
+      if (!d.isShortcutsOpen) d.onOpenShortcuts()
+      return true
+    }
+  }
+
   if (!ctx.modOnly) return undefined
   const key = e.key.toLowerCase()
   if (key === "k") {

@@ -133,7 +133,7 @@ function SortableQueueItem({
         className={cn(
           "group/icon relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border transition-[transform,colors,opacity] duration-ui ease-out-quart hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:hover:scale-100",
           isActive
-            ? "border-accent/40 bg-accent/12 shadow-[0_0_0_1px_oklch(0.55_0.12_260_/_0.18)]"
+            ? "border-accent/40 bg-accent/12 shadow-[0_0_0_1px_oklch(from_var(--color-accent)_l_c_h_/_0.18)]"
             : "border-white/8 bg-white/[0.04] hover:border-white/14 hover:bg-white/[0.08]"
         )}
       >
@@ -154,7 +154,7 @@ function SortableQueueItem({
           </div>
         )}
 
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,oklch(1_0_0/.12),transparent_40%,oklch(0_0_0/.18))]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,oklch(from_var(--color-foreground)_l_c_h_/_0.12),transparent_40%,oklch(0_0_0/.18))]" />
 
         {isActive ? (
           <div className="absolute inset-0 flex items-center justify-center">

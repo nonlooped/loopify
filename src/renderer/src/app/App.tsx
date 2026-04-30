@@ -31,6 +31,11 @@ const PlaylistActionModal = lazy(() =>
     default: m.PlaylistActionModal,
   }))
 )
+const ShortcutsOverlay = lazy(() =>
+  import("../../features/shell/ShortcutsOverlay").then((m) => ({
+    default: m.ShortcutsOverlay,
+  }))
+)
 
 export function App() {
   const bootPhase = useAppStore((s) => s.bootPhase)
@@ -52,6 +57,7 @@ export function App() {
   const isSearchOpen = useAppStore((s) => s.isSearchOpen)
   const isSettingsOpen = useAppStore((s) => s.isSettingsOpen)
   const isImportOpen = useAppStore((s) => s.isImportOpen)
+  const isShortcutsOpen = useAppStore((s) => s.isShortcutsOpen)
   const playlistAction = useAppStore((s) => s.playlistAction)
 
   const handlePlayPause = useAppStore((s) => s.handlePlayPause)
@@ -68,6 +74,7 @@ export function App() {
   const toggleSearch = useAppStore((s) => s.toggleSearch)
   const toggleSettings = useAppStore((s) => s.toggleSettings)
   const toggleImport = useAppStore((s) => s.toggleImport)
+  const toggleShortcuts = useAppStore((s) => s.toggleShortcuts)
   const toggleQueue = useAppStore((s) => s.toggleQueue)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const handleCreatePlaylist = useAppStore((s) => s.handleCreatePlaylist)
@@ -131,6 +138,7 @@ export function App() {
     onOpenSearch: () => toggleSearch(true),
     onOpenSettings: () => toggleSettings(true),
     onOpenImport: () => toggleImport(true),
+    onOpenShortcuts: () => toggleShortcuts(true),
     onToggleQueue: () => toggleQueue(),
     onToggleSidebar: () => toggleSidebar(),
     onNewPlaylist: handleCreatePlaylist,
@@ -147,6 +155,7 @@ export function App() {
     isSearchOpen,
     isSettingsOpen,
     isImportOpen,
+    isShortcutsOpen,
     playlistActionOpen: playlistAction != null,
     canShuffleQueue: queue.length >= 2,
     hasNext,
@@ -231,6 +240,7 @@ export function App() {
             <SettingsModal />
             <ImportModal />
             <PlaylistActionModal />
+            <ShortcutsOverlay open={isShortcutsOpen} onClose={() => toggleShortcuts(false)} />
           </Suspense>
 
           <ContextMenuRenderer />
