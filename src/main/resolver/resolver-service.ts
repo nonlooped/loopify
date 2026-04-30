@@ -1,20 +1,32 @@
 import { spawn } from "node:child_process"
 import ms from "ms"
-import pLimit from "p-limit"
 import type {
+  AlbumDetails,
+  ArtistDiscography,
+  CatalogAlbum,
+  CatalogArtist,
+  CatalogSearchResult,
   CatalogTrack,
   Provider,
   ResolvedTrack,
   TrackCandidate,
 } from "../../shared/types/music"
-import { searchCatalog } from "../catalog/catalog-search"
+import { DeezerService } from "../catalog/deezer-service"
 import type { ResolverCacheRepository, SettingsRepository } from "../db/repositories"
-import { enrichTrackCandidate } from "../metadata/catalog-enrichment"
 import { buildYtsearchArg } from "../music/query-builders"
 import { resolveYtdlpPath } from "./resolve-ytdlp"
 import { type MatcherEntry, pickBestMatch } from "./youtube-source-matcher"
 
-const ENRICHMENT_CONCURRENCY = 4
+const STAGE2_SEARCH_LIMIT = 8
+
+export type PlaylistResolution = {
+  title: string
+  tracks: TrackCandidate[]
+  truncated: boolean
+  sourceTrackCount: number
+}
+
+export const YT_FORMAT_PLAY = "bestaudio/best"
 
 type YtdlpEntry = {
   id?: string
@@ -31,36 +43,16 @@ type YtdlpEntry = {
   entries?: YtdlpEntry[]
 }
 
-export type PlaylistResolution = {
-  title: string
-  tracks: TrackCandidate[]
-  /** True when the source had more items than the import cap. */
-  truncated: boolean
-  sourceTrackCount: number
-}
-
-export const YT_FORMAT_PLAY = "bestaudio/best"
-
-const STAGE2_SEARCH_LIMIT = 8
-
-export type CandidateEnrichedListener = (sourceUrl: string, candidate: TrackCandidate) => void
-
 export class ResolverService {
+  private readonly deezer = new DeezerService()
   private readonly inFlight = new Map<string, Promise<ResolvedTrack>>()
   private readonly inFlightStream = new Map<string, Promise<string | null>>()
   private readonly inFlightCatalog = new Map<string, Promise<TrackCandidate>>()
-  private readonly inFlightEnrichment = new Map<string, Promise<void>>()
-  private readonly enrichmentQueue = pLimit(ENRICHMENT_CONCURRENCY)
-  private onCandidateEnriched: CandidateEnrichedListener | null = null
 
   constructor(
     private readonly settings: SettingsRepository,
     private readonly cache: ResolverCacheRepository
   ) {}
-
-  setOnCandidateEnriched(listener: CandidateEnrichedListener | null): void {
-    this.onCandidateEnriched = listener
-  }
 
   primeCandidate(candidate: TrackCandidate): void {
     this.cache.setResolved(candidate.sourceUrl, {
@@ -122,107 +114,76 @@ export class ResolverService {
       streamExpiresAt: this.streamExpiresAt(streamUrl),
     })
 
-    if (settings.metadataEnrichmentEnabled) {
-      this.enrichInBackground(source, base, streamUrl)
+    const enriched = await this.enrichWithDeezer(base, settings.deezerMatchThreshold)
+    if (enriched !== base) {
+      this.cache.setResolved(source, {
+        candidate: enriched,
+        streamUrl,
+        expiresAt,
+        streamExpiresAt: this.streamExpiresAt(streamUrl),
+      })
     }
 
     return {
-      candidate: base,
+      candidate: enriched,
       streamUrl,
       expiresAt,
     }
   }
 
-  private enrichInBackground(source: string, base: TrackCandidate, streamUrl: string | null): void {
-    if (this.inFlightEnrichment.has(source)) return
-    const settings = this.settings.get()
-    const promise = this.enrichmentQueue(() =>
-      enrichTrackCandidate(base, { minScore: settings.metadataMinScore })
-        .then((enriched) => {
-          if (enriched === base) return
-          this.cache.setResolved(source, {
-            candidate: enriched,
-            streamUrl,
-            expiresAt: this.metadataExpiresAt(),
-            streamExpiresAt: this.streamExpiresAt(streamUrl),
-          })
-          this.onCandidateEnriched?.(source, enriched)
-        })
-        .catch(() => {
-          // enrichment failures are non-fatal; raw candidate is already cached
-        })
-        .finally(() => {
-          this.inFlightEnrichment.delete(source)
-        })
-    )
-    this.inFlightEnrichment.set(source, promise)
-  }
+  private async enrichWithDeezer(
+    candidate: TrackCandidate,
+    minScore: number
+  ): Promise<TrackCandidate> {
+    const q = [candidate.artist, candidate.title].filter(Boolean).join(" ").trim()
+    if (q.length < 2) return candidate
 
-  private async fillStreamUrl(source: string, candidate: TrackCandidate): Promise<string | null> {
-    const p = this.inFlightStream.get(source)
-    if (p) return p
-    const promise = this.runYtdlp(
-      ["--dump-single-json", "--no-playlist", "--no-warnings", "--format", YT_FORMAT_PLAY, source],
-      this.settings.get().resolverTimeoutMs
-    )
-      .then((r) => {
-        const url = r.url ?? null
-        this.cache.setResolved(source, {
-          candidate,
-          streamUrl: url,
-          expiresAt: this.metadataExpiresAt(),
-          streamExpiresAt: this.streamExpiresAt(url),
-        })
-        return url
-      })
-      .finally(() => {
-        this.inFlightStream.delete(source)
-      })
-    this.inFlightStream.set(source, promise)
-    return promise
-  }
+    try {
+      const match = await this.deezer.findBestTrackMatch(
+        candidate.title,
+        candidate.artist,
+        candidate.durationMs,
+        minScore
+      )
+      if (!match) return candidate
 
-  private metadataExpiresAt(): number {
-    return Date.now() + ms(`${this.settings.get().cacheTtlHours}h`)
-  }
-
-  private streamExpiresAt(streamUrl: string | null): number {
-    const configured = Date.now() + ms(`${this.settings.get().streamCacheTtlMinutes}m`)
-    if (!streamUrl) return configured
-    const fromUrl = parseStreamExpiryMs(streamUrl)
-    if (fromUrl === null) return configured
-    return Math.min(configured, fromUrl)
-  }
-
-  /**
-   * First search hit (ytsearchN / scsearchN or URL).
-   * Used for Spotify import matching.
-   */
-  async getFirstSearchCandidate(sourceArg: string): Promise<TrackCandidate | null> {
-    const result = await this.runYtdlp(
-      ["--dump-single-json", "--flat-playlist", "--no-warnings", sourceArg],
-      this.settings.get().resolverTimeoutMs
-    )
-    if (result.entries?.[0]) {
-      const e = result.entries[0]
-      return this.toCandidate(e, e.webpage_url ?? e.url ?? sourceArg)
+      return {
+        ...candidate,
+        title: match.title,
+        artist: match.artist,
+        album: match.album ?? candidate.album,
+        durationMs: match.durationMs ?? candidate.durationMs,
+        thumbnailUrl: match.artworkUrl ?? candidate.thumbnailUrl,
+      }
+    } catch {
+      return candidate
     }
-    if (result.id || result.webpage_url) {
-      return this.toCandidate(result, result.webpage_url ?? result.url ?? sourceArg)
-    }
-    return null
   }
 
-  /** Stage 1: free-text search returns catalog hits (real songs, not videos). */
-  async search(text: string): Promise<CatalogTrack[]> {
-    return searchCatalog(text)
+  async search(text: string): Promise<CatalogSearchResult[]> {
+    return this.deezer.searchAll(text)
   }
 
-  /**
-   * Stage 2: convert a catalog hit into a play-ready TrackCandidate by finding a duration-matched
-   * audio source on YouTube. The candidate's display metadata is taken from the catalog (canonical),
-   * and only the source URL/id come from YouTube.
-   */
+  async searchTracks(query: string): Promise<CatalogTrack[]> {
+    return this.deezer.searchTracks(query)
+  }
+
+  async searchArtists(query: string): Promise<CatalogArtist[]> {
+    return this.deezer.searchArtists(query)
+  }
+
+  async searchAlbums(query: string): Promise<CatalogAlbum[]> {
+    return this.deezer.searchAlbums(query)
+  }
+
+  async getArtist(deezerId: number): Promise<ArtistDiscography> {
+    return this.deezer.getArtist(deezerId)
+  }
+
+  async getAlbum(deezerId: number): Promise<AlbumDetails> {
+    return this.deezer.getAlbum(deezerId)
+  }
+
   async resolveCatalog(track: CatalogTrack): Promise<TrackCandidate> {
     const cacheKey = catalogCacheKey(track)
     const inflight = this.inFlightCatalog.get(cacheKey)
@@ -270,12 +231,7 @@ export class ResolverService {
       expiresAt,
       streamExpiresAt: null,
     })
-    // Pre-fire stream URL fetch in parallel with the renderer round-trip so that, by the time
-    // the user's queue.add({playNow:true}) call comes back through resolve(), the stream URL is
-    // (often) already cached — turning two sequential yt-dlp calls into one perceived call.
-    void this.fillStreamUrl(candidate.sourceUrl, candidate).catch(() => {
-      // failure is non-fatal — resolve() will retry through the normal cache-miss path
-    })
+    void this.fillStreamUrl(candidate.sourceUrl, candidate).catch(() => {})
     return candidate
   }
 
@@ -290,13 +246,31 @@ export class ResolverService {
       view_count: entry.view_count,
     }
     const ytCandidate = this.toCandidate(ytEntry, entry.webpage_url ?? entry.url ?? "")
+    const canonicalUrl = `https://www.deezer.com/track/${track.catalogId}`
     return {
       ...ytCandidate,
       title: track.title,
       artist: track.artist,
+      album: track.album ?? ytCandidate.album,
       durationMs: track.durationMs,
       thumbnailUrl: track.artworkUrl ?? ytCandidate.thumbnailUrl,
+      canonicalUrl,
     }
+  }
+
+  async getFirstSearchCandidate(sourceArg: string): Promise<TrackCandidate | null> {
+    const result = await this.runYtdlp(
+      ["--dump-single-json", "--flat-playlist", "--no-warnings", sourceArg],
+      this.settings.get().resolverTimeoutMs
+    )
+    if (result.entries?.[0]) {
+      const e = result.entries[0]
+      return this.toCandidate(e, e.webpage_url ?? e.url ?? sourceArg)
+    }
+    if (result.id || result.webpage_url) {
+      return this.toCandidate(result, result.webpage_url ?? result.url ?? sourceArg)
+    }
+    return null
   }
 
   async listPlaylist(inputUrl: string): Promise<TrackCandidate[]> {
@@ -319,19 +293,50 @@ export class ResolverService {
     const tracks = limited.map((entry) =>
       this.toCandidate(entry, entry.webpage_url ?? entry.url ?? inputUrl)
     )
-    if (settings.metadataEnrichmentEnabled) {
-      // Enrich in the background — the renderer/import pipeline gets raw candidates immediately
-      // and the cache + library are updated when each enrichment lands.
-      for (const candidate of tracks) {
-        this.enrichInBackground(candidate.sourceUrl, candidate, null)
-      }
-    }
+
+    const enriched = await Promise.all(
+      tracks.map(async (candidate) => {
+        const enriched = await this.enrichWithDeezer(candidate, settings.deezerMatchThreshold)
+        this.cache.setResolved(candidate.sourceUrl, {
+          candidate: enriched,
+          streamUrl: null,
+          expiresAt: this.metadataExpiresAt(),
+          streamExpiresAt: null,
+        })
+        return enriched
+      })
+    )
+
     return {
       title: result.title?.trim() || "Imported Playlist",
-      tracks,
+      tracks: enriched,
       truncated: sourceTrackCount > maxTracks,
       sourceTrackCount,
     }
+  }
+
+  private async fillStreamUrl(source: string, candidate: TrackCandidate): Promise<string | null> {
+    const p = this.inFlightStream.get(source)
+    if (p) return p
+    const promise = this.runYtdlp(
+      ["--dump-single-json", "--no-playlist", "--no-warnings", "--format", YT_FORMAT_PLAY, source],
+      this.settings.get().resolverTimeoutMs
+    )
+      .then((r) => {
+        const url = r.url ?? null
+        this.cache.setResolved(source, {
+          candidate,
+          streamUrl: url,
+          expiresAt: this.metadataExpiresAt(),
+          streamExpiresAt: this.streamExpiresAt(url),
+        })
+        return url
+      })
+      .finally(() => {
+        this.inFlightStream.delete(source)
+      })
+    this.inFlightStream.set(source, promise)
+    return promise
   }
 
   toCandidate(entry: YtdlpEntry, fallbackUrl: string): TrackCandidate {
@@ -345,6 +350,7 @@ export class ResolverService {
     return {
       title: entry.title ?? "Untitled track",
       artist: entry.artist ?? entry.uploader ?? null,
+      album: null,
       durationMs: typeof entry.duration === "number" ? Math.round(entry.duration * 1000) : null,
       thumbnailUrl: entry.thumbnail ?? thumbnailFromProvider(provider, entry.id ?? null),
       sourceUrl: canonicalUrl,
@@ -369,10 +375,10 @@ export class ResolverService {
 
       child.stdout.setEncoding("utf8")
       child.stderr.setEncoding("utf8")
-      child.stdout.on("data", (chunk) => {
+      child.stdout.on("data", (chunk: string) => {
         stdout += chunk
       })
-      child.stderr.on("data", (chunk) => {
+      child.stderr.on("data", (chunk: string) => {
         stderr += chunk
       })
       child.on("error", (error: NodeJS.ErrnoException) => {
@@ -383,7 +389,7 @@ export class ResolverService {
         }
         reject(error)
       })
-      child.on("close", (code) => {
+      child.on("close", (code: number | null) => {
         clearTimeout(timeout)
         if (code !== 0) {
           reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}.`))
@@ -396,6 +402,18 @@ export class ResolverService {
         }
       })
     })
+  }
+
+  private metadataExpiresAt(): number {
+    return Date.now() + ms(`${this.settings.get().cacheTtlHours}h`)
+  }
+
+  private streamExpiresAt(streamUrl: string | null): number {
+    const configured = Date.now() + ms(`${this.settings.get().streamCacheTtlMinutes}m`)
+    if (!streamUrl) return configured
+    const fromUrl = parseStreamExpiryMs(streamUrl)
+    if (fromUrl === null) return configured
+    return Math.min(configured, fromUrl)
   }
 }
 
@@ -448,12 +466,6 @@ function catalogCacheKey(track: CatalogTrack): string {
   return `catalog:${track.catalogProvider}:${track.catalogId}`
 }
 
-/**
- * YouTube googlevideo URLs embed a unix-second `expire=` parameter that reflects the actual
- * stream URL lifetime (typically ~6h). Returning that as ms-since-epoch lets the cache keep
- * stream URLs fresh for as long as YouTube allows, instead of always falling back to the much
- * shorter configured TTL. Returns null when no expiry is detectable.
- */
 function parseStreamExpiryMs(streamUrl: string): number | null {
   try {
     const url = new URL(streamUrl)

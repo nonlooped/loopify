@@ -21,14 +21,70 @@ import {
   OFFLINE_SONGS_PLAYLIST_ID,
 } from "../../shared/types/music"
 import * as schema from "./schema"
-import type { DbTrack } from "./types"
+import type { DbAlbum, DbArtist, DbTrack } from "./types"
 import {
   mapImport,
   mapLyricsCache,
+  mapPlaylistTrackRow,
   mapQueueItem,
   mapTrack,
   mapTrackCandidateFromJson,
 } from "./types"
+
+const trackColumns = {
+  id: schema.tracks.id,
+  title: schema.tracks.title,
+  artist: schema.tracks.artist,
+  album: schema.tracks.album,
+  artistId: schema.tracks.artistId,
+  albumId: schema.tracks.albumId,
+  durationMs: schema.tracks.durationMs,
+  thumbnailUrl: schema.tracks.thumbnailUrl,
+  canonicalUrl: schema.tracks.canonicalUrl,
+  provider: schema.tracks.provider,
+  likedAt: schema.tracks.likedAt,
+  downloadStatus: schema.tracks.downloadStatus,
+  downloadProgress: schema.tracks.downloadProgress,
+  downloadedFilePath: schema.tracks.downloadedFilePath,
+  downloadError: schema.tracks.downloadError,
+  downloadedAt: schema.tracks.downloadedAt,
+  createdAt: schema.tracks.createdAt,
+  updatedAt: schema.tracks.updatedAt,
+} as const
+
+const playlistTrackSelectColumns = {
+  playlistId: schema.playlistTracks.playlistId,
+  playlistEntryId: schema.playlistTracks.id,
+  addedAt: schema.playlistTracks.addedAt,
+  ...trackColumns,
+} as const
+
+const queueItemColumns = {
+  id: schema.queueItems.id,
+  trackId: schema.queueItems.trackId,
+  sourceUrl: schema.queueItems.sourceUrl,
+  sortOrder: schema.queueItems.sortOrder,
+  status: schema.queueItems.status,
+  createdAt: schema.queueItems.createdAt,
+  t_id: schema.tracks.id,
+  t_title: schema.tracks.title,
+  t_artist: schema.tracks.artist,
+  t_album: schema.tracks.album,
+  t_artist_id: schema.tracks.artistId,
+  t_album_id: schema.tracks.albumId,
+  t_duration_ms: schema.tracks.durationMs,
+  t_thumbnail_url: schema.tracks.thumbnailUrl,
+  t_canonical_url: schema.tracks.canonicalUrl,
+  t_provider: schema.tracks.provider,
+  t_liked_at: schema.tracks.likedAt,
+  t_download_status: schema.tracks.downloadStatus,
+  t_download_progress: schema.tracks.downloadProgress,
+  t_downloaded_file_path: schema.tracks.downloadedFilePath,
+  t_download_error: schema.tracks.downloadError,
+  t_downloaded_at: schema.tracks.downloadedAt,
+  t_created_at: schema.tracks.createdAt,
+  t_updated_at: schema.tracks.updatedAt,
+} as const
 
 const defaultSettings: AppSettings = {
   mpvPath: "mpv",
@@ -40,8 +96,7 @@ const defaultSettings: AppSettings = {
   importMaxTracks: 100,
   importMatchConcurrency: 4,
   spotifyMatchScoreThreshold: 0.42,
-  metadataEnrichmentEnabled: true,
-  metadataMinScore: 0.35,
+  deezerMatchThreshold: 0.35,
   importProgressThrottle: 3,
   discordPresenceEnabled: true,
 }
@@ -56,8 +111,7 @@ const appSettingsSchema = z.object({
   importMaxTracks: z.number().int().min(1).max(500),
   importMatchConcurrency: z.number().int().min(1).max(16),
   spotifyMatchScoreThreshold: z.number().min(0).max(1),
-  metadataEnrichmentEnabled: z.boolean(),
-  metadataMinScore: z.number().min(0).max(1),
+  deezerMatchThreshold: z.number().min(0).max(1),
   importProgressThrottle: z.number().int().min(1).max(100),
   discordPresenceEnabled: z.boolean(),
 })
@@ -159,6 +213,7 @@ export class LibraryRepository {
         .set({
           title,
           artist: candidate.artist ?? row.artist,
+          album: candidate.album ?? row.album,
           durationMs: candidate.durationMs ?? row.durationMs,
           thumbnailUrl: candidate.thumbnailUrl ?? row.thumbnailUrl,
           canonicalUrl: candidate.canonicalUrl,
@@ -191,7 +246,9 @@ export class LibraryRepository {
         id: trackId,
         title: candidate.title,
         artist: candidate.artist,
-        album: null,
+        album: candidate.album ?? null,
+        artistId: null,
+        albumId: null,
         durationMs: candidate.durationMs,
         thumbnailUrl: candidate.thumbnailUrl,
         canonicalUrl: candidate.canonicalUrl,
@@ -222,24 +279,7 @@ export class LibraryRepository {
 
   findTrackRowBySourceUrl(sourceUrl: string): DbTrack | undefined {
     const result = this.db
-      .select({
-        id: schema.tracks.id,
-        title: schema.tracks.title,
-        artist: schema.tracks.artist,
-        album: schema.tracks.album,
-        durationMs: schema.tracks.durationMs,
-        thumbnailUrl: schema.tracks.thumbnailUrl,
-        canonicalUrl: schema.tracks.canonicalUrl,
-        provider: schema.tracks.provider,
-        likedAt: schema.tracks.likedAt,
-        downloadStatus: schema.tracks.downloadStatus,
-        downloadProgress: schema.tracks.downloadProgress,
-        downloadedFilePath: schema.tracks.downloadedFilePath,
-        downloadError: schema.tracks.downloadError,
-        downloadedAt: schema.tracks.downloadedAt,
-        createdAt: schema.tracks.createdAt,
-        updatedAt: schema.tracks.updatedAt,
-      })
+      .select(trackColumns)
       .from(schema.tracks)
       .innerJoin(schema.trackSources, eq(schema.trackSources.trackId, schema.tracks.id))
       .where(eq(schema.trackSources.sourceUrl, sourceUrl))
@@ -258,24 +298,7 @@ export class LibraryRepository {
 
   findTrackRowByProviderSourceId(provider: Provider, sourceId: string): DbTrack | undefined {
     const result = this.db
-      .select({
-        id: schema.tracks.id,
-        title: schema.tracks.title,
-        artist: schema.tracks.artist,
-        album: schema.tracks.album,
-        durationMs: schema.tracks.durationMs,
-        thumbnailUrl: schema.tracks.thumbnailUrl,
-        canonicalUrl: schema.tracks.canonicalUrl,
-        provider: schema.tracks.provider,
-        likedAt: schema.tracks.likedAt,
-        downloadStatus: schema.tracks.downloadStatus,
-        downloadProgress: schema.tracks.downloadProgress,
-        downloadedFilePath: schema.tracks.downloadedFilePath,
-        downloadError: schema.tracks.downloadError,
-        downloadedAt: schema.tracks.downloadedAt,
-        createdAt: schema.tracks.createdAt,
-        updatedAt: schema.tracks.updatedAt,
-      })
+      .select(trackColumns)
       .from(schema.tracks)
       .innerJoin(schema.trackSources, eq(schema.trackSources.trackId, schema.tracks.id))
       .where(
@@ -283,6 +306,87 @@ export class LibraryRepository {
       )
       .get()
     return result
+  }
+
+  findSourceUrlByCanonicalUrl(canonicalUrl: string): string | null {
+    const map = this.findSourceUrlsForCanonicalUrls([canonicalUrl])
+    return map.get(canonicalUrl) ?? null
+  }
+
+  findSourceUrlsForCanonicalUrls(canonicalUrls: string[]): Map<string, string> {
+    if (canonicalUrls.length === 0) return new Map()
+    const rows = this.db
+      .select({
+        canonicalUrl: schema.tracks.canonicalUrl,
+        sourceUrl: schema.trackSources.sourceUrl,
+      })
+      .from(schema.tracks)
+      .innerJoin(schema.trackSources, eq(schema.trackSources.trackId, schema.tracks.id))
+      .where(inArray(schema.tracks.canonicalUrl, canonicalUrls))
+      .all()
+    const map = new Map<string, string>()
+    for (const row of rows) {
+      if (!map.has(row.canonicalUrl)) {
+        map.set(row.canonicalUrl, row.sourceUrl)
+      }
+    }
+    return map
+  }
+
+  findArtistByDeezerId(deezerId: number): DbArtist | undefined {
+    return this.db.select().from(schema.artists).where(eq(schema.artists.deezerId, deezerId)).get()
+  }
+
+  findAlbumByDeezerId(deezerId: number): DbAlbum | undefined {
+    return this.db.select().from(schema.albums).where(eq(schema.albums.deezerId, deezerId)).get()
+  }
+
+  upsertArtist(deezerId: number, name: string, pictureUrl: string | null): string {
+    const existing = this.findArtistByDeezerId(deezerId)
+    if (existing) return existing.id
+    const artistId = id("art")
+    const timestamp = now()
+    this.db
+      .insert(schema.artists)
+      .values({
+        id: artistId,
+        deezerId,
+        name,
+        pictureUrl,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run()
+    return artistId
+  }
+
+  upsertAlbum(
+    deezerId: number,
+    title: string,
+    artistId: string | null,
+    coverUrl: string | null,
+    albumType: string | null,
+    trackCount: number | null
+  ): string {
+    const existing = this.findAlbumByDeezerId(deezerId)
+    if (existing) return existing.id
+    const albumId = id("alb")
+    const timestamp = now()
+    this.db
+      .insert(schema.albums)
+      .values({
+        id: albumId,
+        deezerId,
+        title,
+        artistId,
+        coverUrl,
+        albumType,
+        trackCount,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run()
+    return albumId
   }
 
   getTrack(trackId: string): Track | null {
@@ -338,27 +442,7 @@ export class LibraryRepository {
 
     if (playlistIds.length > 0) {
       const trackRows = this.db
-        .select({
-          playlistId: schema.playlistTracks.playlistId,
-          playlistEntryId: schema.playlistTracks.id,
-          addedAt: schema.playlistTracks.addedAt,
-          id: schema.tracks.id,
-          title: schema.tracks.title,
-          artist: schema.tracks.artist,
-          album: schema.tracks.album,
-          durationMs: schema.tracks.durationMs,
-          thumbnailUrl: schema.tracks.thumbnailUrl,
-          canonicalUrl: schema.tracks.canonicalUrl,
-          provider: schema.tracks.provider,
-          likedAt: schema.tracks.likedAt,
-          downloadStatus: schema.tracks.downloadStatus,
-          downloadProgress: schema.tracks.downloadProgress,
-          downloadedFilePath: schema.tracks.downloadedFilePath,
-          downloadError: schema.tracks.downloadError,
-          downloadedAt: schema.tracks.downloadedAt,
-          createdAt: schema.tracks.createdAt,
-          updatedAt: schema.tracks.updatedAt,
-        })
+        .select(playlistTrackSelectColumns)
         .from(schema.playlistTracks)
         .innerJoin(schema.tracks, eq(schema.tracks.id, schema.playlistTracks.trackId))
         .where(inArray(schema.playlistTracks.playlistId, playlistIds))
@@ -367,26 +451,7 @@ export class LibraryRepository {
 
       for (const row of trackRows) {
         const list = tracksByPlaylist.get(row.playlistId) ?? []
-        list.push({
-          id: row.id,
-          title: row.title,
-          artist: row.artist,
-          album: row.album,
-          durationMs: row.durationMs,
-          thumbnailUrl: row.thumbnailUrl,
-          canonicalUrl: row.canonicalUrl,
-          provider: row.provider as Provider,
-          likedAt: row.likedAt,
-          downloadStatus: row.downloadStatus as DownloadStatus,
-          downloadProgress: row.downloadProgress,
-          downloadedFilePath: row.downloadedFilePath,
-          downloadError: row.downloadError,
-          downloadedAt: row.downloadedAt,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-          playlistEntryId: row.playlistEntryId,
-          addedAt: row.addedAt,
-        })
+        list.push(mapPlaylistTrackRow(row))
         tracksByPlaylist.set(row.playlistId, list)
       }
     }
@@ -731,99 +796,27 @@ export class LibraryRepository {
 
   private listPlaylistTracks(playlistId: string): PlaylistTrackItem[] {
     const rows = this.db
-      .select({
-        playlistEntryId: schema.playlistTracks.id,
-        addedAt: schema.playlistTracks.addedAt,
-        id: schema.tracks.id,
-        title: schema.tracks.title,
-        artist: schema.tracks.artist,
-        album: schema.tracks.album,
-        durationMs: schema.tracks.durationMs,
-        thumbnailUrl: schema.tracks.thumbnailUrl,
-        canonicalUrl: schema.tracks.canonicalUrl,
-        provider: schema.tracks.provider,
-        likedAt: schema.tracks.likedAt,
-        downloadStatus: schema.tracks.downloadStatus,
-        downloadProgress: schema.tracks.downloadProgress,
-        downloadedFilePath: schema.tracks.downloadedFilePath,
-        downloadError: schema.tracks.downloadError,
-        downloadedAt: schema.tracks.downloadedAt,
-        createdAt: schema.tracks.createdAt,
-        updatedAt: schema.tracks.updatedAt,
-      })
+      .select(playlistTrackSelectColumns)
       .from(schema.playlistTracks)
       .innerJoin(schema.tracks, eq(schema.tracks.id, schema.playlistTracks.trackId))
       .where(eq(schema.playlistTracks.playlistId, playlistId))
       .orderBy(asc(schema.playlistTracks.sortOrder), asc(schema.playlistTracks.addedAt))
       .all()
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      artist: row.artist,
-      album: row.album,
-      durationMs: row.durationMs,
-      thumbnailUrl: row.thumbnailUrl,
-      canonicalUrl: row.canonicalUrl,
-      provider: row.provider as Provider,
-      likedAt: row.likedAt,
-      downloadStatus: row.downloadStatus as DownloadStatus,
-      downloadProgress: row.downloadProgress,
-      downloadedFilePath: row.downloadedFilePath,
-      downloadError: row.downloadError,
-      downloadedAt: row.downloadedAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      playlistEntryId: row.playlistEntryId,
-      addedAt: row.addedAt,
-    }))
+    return rows.map((row) => mapPlaylistTrackRow(row))
   }
 
   private listLikedTracks(): PlaylistTrackItem[] {
     const rows = this.db
       .select({
         playlistEntryId: sql<string>`'liked_' || ${schema.tracks.id}`,
-        addedAt: schema.tracks.likedAt,
-        id: schema.tracks.id,
-        title: schema.tracks.title,
-        artist: schema.tracks.artist,
-        album: schema.tracks.album,
-        durationMs: schema.tracks.durationMs,
-        thumbnailUrl: schema.tracks.thumbnailUrl,
-        canonicalUrl: schema.tracks.canonicalUrl,
-        provider: schema.tracks.provider,
-        likedAt: schema.tracks.likedAt,
-        downloadStatus: schema.tracks.downloadStatus,
-        downloadProgress: schema.tracks.downloadProgress,
-        downloadedFilePath: schema.tracks.downloadedFilePath,
-        downloadError: schema.tracks.downloadError,
-        downloadedAt: schema.tracks.downloadedAt,
-        createdAt: schema.tracks.createdAt,
-        updatedAt: schema.tracks.updatedAt,
+        addedAt: sql<number>`coalesce(${schema.tracks.likedAt}, 0)`,
+        ...trackColumns,
       })
       .from(schema.tracks)
       .where(isNotNull(schema.tracks.likedAt))
       .orderBy(desc(schema.tracks.likedAt), desc(schema.tracks.createdAt))
       .all()
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      artist: row.artist,
-      album: row.album,
-      durationMs: row.durationMs,
-      thumbnailUrl: row.thumbnailUrl,
-      canonicalUrl: row.canonicalUrl,
-      provider: row.provider as Provider,
-      likedAt: row.likedAt,
-      downloadStatus: row.downloadStatus as DownloadStatus,
-      downloadProgress: row.downloadProgress,
-      downloadedFilePath: row.downloadedFilePath,
-      downloadError: row.downloadError,
-      downloadedAt: row.downloadedAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      playlistEntryId: row.playlistEntryId,
-      addedAt: row.addedAt ?? 0,
-    }))
+    return rows.map((row) => mapPlaylistTrackRow(row))
   }
 
   private listDownloadedTracks(): PlaylistTrackItem[] {
@@ -831,22 +824,7 @@ export class LibraryRepository {
       .select({
         playlistEntryId: sql<string>`'offline_' || ${schema.tracks.id}`,
         addedAt: sql<number>`coalesce(${schema.tracks.downloadedAt}, ${schema.tracks.updatedAt})`,
-        id: schema.tracks.id,
-        title: schema.tracks.title,
-        artist: schema.tracks.artist,
-        album: schema.tracks.album,
-        durationMs: schema.tracks.durationMs,
-        thumbnailUrl: schema.tracks.thumbnailUrl,
-        canonicalUrl: schema.tracks.canonicalUrl,
-        provider: schema.tracks.provider,
-        likedAt: schema.tracks.likedAt,
-        downloadStatus: schema.tracks.downloadStatus,
-        downloadProgress: schema.tracks.downloadProgress,
-        downloadedFilePath: schema.tracks.downloadedFilePath,
-        downloadError: schema.tracks.downloadError,
-        downloadedAt: schema.tracks.downloadedAt,
-        createdAt: schema.tracks.createdAt,
-        updatedAt: schema.tracks.updatedAt,
+        ...trackColumns,
       })
       .from(schema.tracks)
       .where(
@@ -860,26 +838,7 @@ export class LibraryRepository {
         desc(schema.tracks.createdAt)
       )
       .all()
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      artist: row.artist,
-      album: row.album,
-      durationMs: row.durationMs,
-      thumbnailUrl: row.thumbnailUrl,
-      canonicalUrl: row.canonicalUrl,
-      provider: row.provider as Provider,
-      likedAt: row.likedAt,
-      downloadStatus: row.downloadStatus as DownloadStatus,
-      downloadProgress: row.downloadProgress,
-      downloadedFilePath: row.downloadedFilePath,
-      downloadError: row.downloadError,
-      downloadedAt: row.downloadedAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      playlistEntryId: row.playlistEntryId,
-      addedAt: row.addedAt ?? 0,
-    }))
+    return rows.map((row) => mapPlaylistTrackRow(row, { addedAt: row.addedAt ?? 0 }))
   }
 }
 
@@ -888,30 +847,7 @@ export class QueueRepository {
 
   list(): QueueItem[] {
     const rows = this.db
-      .select({
-        id: schema.queueItems.id,
-        trackId: schema.queueItems.trackId,
-        sourceUrl: schema.queueItems.sourceUrl,
-        sortOrder: schema.queueItems.sortOrder,
-        status: schema.queueItems.status,
-        createdAt: schema.queueItems.createdAt,
-        t_id: schema.tracks.id,
-        t_title: schema.tracks.title,
-        t_artist: schema.tracks.artist,
-        t_album: schema.tracks.album,
-        t_duration_ms: schema.tracks.durationMs,
-        t_thumbnail_url: schema.tracks.thumbnailUrl,
-        t_canonical_url: schema.tracks.canonicalUrl,
-        t_provider: schema.tracks.provider,
-        t_liked_at: schema.tracks.likedAt,
-        t_download_status: schema.tracks.downloadStatus,
-        t_download_progress: schema.tracks.downloadProgress,
-        t_downloaded_file_path: schema.tracks.downloadedFilePath,
-        t_download_error: schema.tracks.downloadError,
-        t_downloaded_at: schema.tracks.downloadedAt,
-        t_created_at: schema.tracks.createdAt,
-        t_updated_at: schema.tracks.updatedAt,
-      })
+      .select(queueItemColumns)
       .from(schema.queueItems)
       .leftJoin(schema.tracks, eq(schema.tracks.id, schema.queueItems.trackId))
       .orderBy(asc(schema.queueItems.sortOrder), asc(schema.queueItems.createdAt))
@@ -1046,30 +982,7 @@ export class QueueRepository {
 
   get(queueItemId: string): QueueItem | null {
     const row = this.db
-      .select({
-        id: schema.queueItems.id,
-        trackId: schema.queueItems.trackId,
-        sourceUrl: schema.queueItems.sourceUrl,
-        sortOrder: schema.queueItems.sortOrder,
-        status: schema.queueItems.status,
-        createdAt: schema.queueItems.createdAt,
-        t_id: schema.tracks.id,
-        t_title: schema.tracks.title,
-        t_artist: schema.tracks.artist,
-        t_album: schema.tracks.album,
-        t_duration_ms: schema.tracks.durationMs,
-        t_thumbnail_url: schema.tracks.thumbnailUrl,
-        t_canonical_url: schema.tracks.canonicalUrl,
-        t_provider: schema.tracks.provider,
-        t_liked_at: schema.tracks.likedAt,
-        t_download_status: schema.tracks.downloadStatus,
-        t_download_progress: schema.tracks.downloadProgress,
-        t_downloaded_file_path: schema.tracks.downloadedFilePath,
-        t_download_error: schema.tracks.downloadError,
-        t_downloaded_at: schema.tracks.downloadedAt,
-        t_created_at: schema.tracks.createdAt,
-        t_updated_at: schema.tracks.updatedAt,
-      })
+      .select(queueItemColumns)
       .from(schema.queueItems)
       .leftJoin(schema.tracks, eq(schema.tracks.id, schema.queueItems.trackId))
       .where(eq(schema.queueItems.id, queueItemId))
@@ -1219,43 +1132,31 @@ export class LyricsCacheRepository {
   set(input: LyricsCacheInput): LyricsState {
     const { state } = input
     const lyrics = state.status === "synced" || state.status === "static" ? state.lyrics : null
+    const lyricsValues = {
+      trackTitle: input.trackTitle,
+      artist: input.artist,
+      album: input.album,
+      durationMs: input.durationMs,
+      canonicalUrl: input.canonicalUrl,
+      provider: input.provider,
+      status: state.status,
+      source: lyrics?.source ?? null,
+      providerTrackId: lyrics?.providerTrackId ?? null,
+      syncedLyricsJson: lyrics
+        ? JSON.stringify("lines" in lyrics ? lyrics.lines : lyrics.text)
+        : null,
+      errorMessage: state.reason,
+      fetchedAt: lyrics?.fetchedAt ?? now(),
+    }
     this.db
       .insert(schema.lyricsCache)
       .values({
         id: input.id,
-        trackTitle: input.trackTitle,
-        artist: input.artist,
-        album: input.album,
-        durationMs: input.durationMs,
-        canonicalUrl: input.canonicalUrl,
-        provider: input.provider,
-        status: state.status,
-        source: lyrics?.source ?? null,
-        providerTrackId: lyrics?.providerTrackId ?? null,
-        syncedLyricsJson: lyrics
-          ? JSON.stringify("lines" in lyrics ? lyrics.lines : lyrics.text)
-          : null,
-        errorMessage: state.reason,
-        fetchedAt: lyrics?.fetchedAt ?? now(),
+        ...lyricsValues,
       })
       .onConflictDoUpdate({
         target: schema.lyricsCache.id,
-        set: {
-          trackTitle: input.trackTitle,
-          artist: input.artist,
-          album: input.album,
-          durationMs: input.durationMs,
-          canonicalUrl: input.canonicalUrl,
-          provider: input.provider,
-          status: state.status,
-          source: lyrics?.source ?? null,
-          providerTrackId: lyrics?.providerTrackId ?? null,
-          syncedLyricsJson: lyrics
-            ? JSON.stringify("lines" in lyrics ? lyrics.lines : lyrics.text)
-            : null,
-          errorMessage: state.reason,
-          fetchedAt: lyrics?.fetchedAt ?? now(),
-        },
+        set: lyricsValues,
       })
       .run()
     return state

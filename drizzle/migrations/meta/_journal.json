@@ -8,6 +8,13 @@
       "when": 1777490806125,
       "tag": "0000_dusty_multiple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1777543592034,
+      "tag": "0001_white_synch",
+      "breakpoints": true
     }
   ]
 }

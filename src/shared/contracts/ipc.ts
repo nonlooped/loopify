@@ -1,5 +1,10 @@
 import type {
+  AlbumDetails,
   AppSettings,
+  ArtistDiscography,
+  CatalogAlbum,
+  CatalogArtist,
+  CatalogSearchResult,
   CatalogTrack,
   ImportJob,
   LyricsState,
@@ -74,7 +79,14 @@ export type LoopifyApi = {
     onStateChange: (listener: (state: PlayerState) => void) => () => void
   }
   search: {
-    query: (input: SearchQuery) => Promise<CatalogTrack[]>
+    query: (input: SearchQuery) => Promise<CatalogSearchResult[]>
+    queryTracks: (q: string) => Promise<CatalogTrack[]>
+    queryArtists: (q: string) => Promise<CatalogArtist[]>
+    queryAlbums: (q: string) => Promise<CatalogAlbum[]>
+  }
+  catalog: {
+    getArtist: (deezerId: number) => Promise<ArtistDiscography>
+    getAlbum: (deezerId: number) => Promise<AlbumDetails>
   }
   resolver: {
     resolve: (input: string) => Promise<ResolvedTrack>
@@ -147,6 +159,11 @@ export const ipcChannels = {
   playerSetVolume: "player:set-volume",
   playerSetRepeatMode: "player:set-repeat-mode",
   searchQuery: "search:query",
+  searchQueryTracks: "search:query-tracks",
+  searchQueryArtists: "search:query-artists",
+  searchQueryAlbums: "search:query-albums",
+  catalogGetArtist: "catalog:get-artist",
+  catalogGetAlbum: "catalog:get-album",
   resolverResolve: "resolver:resolve",
   resolverResolveCatalog: "resolver:resolve-catalog",
   queueChanged: "queue:changed",

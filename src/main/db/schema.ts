@@ -1,5 +1,55 @@
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
 
+export const artists = sqliteTable(
+  "artists",
+  {
+    id: text("id").primaryKey(),
+    deezerId: integer("deezer_id").unique(),
+    name: text("name").notNull(),
+    pictureUrl: text("picture_url"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("idx_artists_deezer_id").on(table.deezerId)]
+)
+
+export const albums = sqliteTable(
+  "albums",
+  {
+    id: text("id").primaryKey(),
+    deezerId: integer("deezer_id").unique(),
+    title: text("title").notNull(),
+    artistId: text("artist_id").references(() => artists.id, { onDelete: "set null" }),
+    coverUrl: text("cover_url"),
+    releaseDate: text("release_date"),
+    trackCount: integer("track_count"),
+    albumType: text("album_type"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("idx_albums_deezer_id").on(table.deezerId)]
+)
+
+export const albumTracks = sqliteTable(
+  "album_tracks",
+  {
+    id: text("id").primaryKey(),
+    albumId: text("album_id")
+      .notNull()
+      .references(() => albums.id, { onDelete: "cascade" }),
+    trackId: text("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
+    discNumber: integer("disc_number"),
+    trackNumber: integer("track_number"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("idx_album_tracks_album").on(table.albumId),
+    index("idx_album_tracks_track").on(table.trackId),
+  ]
+)
+
 export const tracks = sqliteTable(
   "tracks",
   {
@@ -7,6 +57,8 @@ export const tracks = sqliteTable(
     title: text("title").notNull(),
     artist: text("artist"),
     album: text("album"),
+    artistId: text("artist_id").references(() => artists.id, { onDelete: "set null" }),
+    albumId: text("album_id").references(() => albums.id, { onDelete: "set null" }),
     durationMs: integer("duration_ms"),
     thumbnailUrl: text("thumbnail_url"),
     canonicalUrl: text("canonical_url").notNull(),
@@ -25,6 +77,8 @@ export const tracks = sqliteTable(
     index("idx_tracks_liked_at").on(table.likedAt),
     index("idx_tracks_download_status").on(table.downloadStatus),
     index("idx_tracks_provider_source").on(table.provider, table.canonicalUrl),
+    index("idx_tracks_artist_id").on(table.artistId),
+    index("idx_tracks_album_id").on(table.albumId),
   ]
 )
 

@@ -34,6 +34,13 @@ const api: LoopifyApi = {
   },
   search: {
     query: (input) => ipcRenderer.invoke(ipcChannels.searchQuery, input),
+    queryTracks: (q) => ipcRenderer.invoke(ipcChannels.searchQueryTracks, q),
+    queryArtists: (q) => ipcRenderer.invoke(ipcChannels.searchQueryArtists, q),
+    queryAlbums: (q) => ipcRenderer.invoke(ipcChannels.searchQueryAlbums, q),
+  },
+  catalog: {
+    getArtist: (deezerId) => ipcRenderer.invoke(ipcChannels.catalogGetArtist, deezerId),
+    getAlbum: (deezerId) => ipcRenderer.invoke(ipcChannels.catalogGetAlbum, deezerId),
   },
   resolver: {
     resolve: (input) => ipcRenderer.invoke(ipcChannels.resolverResolve, input),

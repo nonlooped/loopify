@@ -10,7 +10,7 @@ function mod(e: KeyboardEvent): boolean {
   return e.metaKey || e.ctrlKey
 }
 
-export function isTypableTarget(eventTarget: EventTarget | null): boolean {
+function isTypableTarget(eventTarget: EventTarget | null): boolean {
   if (!eventTarget || !(eventTarget instanceof Element)) return false
   if (eventTarget.closest('[data-loopify-shortcuts="off"]')) {
     return true
@@ -33,7 +33,7 @@ export function isTypableTarget(eventTarget: EventTarget | null): boolean {
   return false
 }
 
-export function isRangeSliderTarget(eventTarget: EventTarget | null): boolean {
+function isRangeSliderTarget(eventTarget: EventTarget | null): boolean {
   return eventTarget instanceof HTMLInputElement && eventTarget.type === "range"
 }
 
@@ -204,7 +204,7 @@ function handleNavigationKeys(
   return undefined
 }
 
-export function handleAppKeyDown(e: KeyboardEvent, d: AppKeyboardShortcutDeps): boolean {
+function handleAppKeyDown(e: KeyboardEvent, d: AppKeyboardShortcutDeps): boolean {
   const ctx: KeyContext = {
     typable: isTypableTarget(e.target),
     inOff: insideShortcutsOffSubtrees(e.target),

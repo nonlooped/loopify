@@ -10,6 +10,9 @@ import type {
   TrackCandidate,
 } from "../../shared/types/music"
 import type {
+  albums,
+  albumTracks,
+  artists,
   importItems,
   imports,
   lyricsCache,
@@ -23,6 +26,9 @@ import type {
   tracks,
 } from "./schema"
 
+export type DbArtist = InferSelectModel<typeof artists>
+export type DbAlbum = InferSelectModel<typeof albums>
+export type DbAlbumTrack = InferSelectModel<typeof albumTracks>
 export type DbTrack = InferSelectModel<typeof tracks>
 export type DbTrackSource = InferSelectModel<typeof trackSources>
 export type DbPlaylist = InferSelectModel<typeof playlists>
@@ -43,6 +49,8 @@ export function mapTrack(
     title: row.title,
     artist: row.artist,
     album: row.album,
+    artistId: row.artistId ?? null,
+    albumId: row.albumId ?? null,
     durationMs: row.durationMs,
     thumbnailUrl: row.thumbnailUrl,
     canonicalUrl: row.canonicalUrl,
@@ -59,12 +67,13 @@ export function mapTrack(
 }
 
 export function mapPlaylistTrackRow(
-  row: DbTrack & { playlistEntryId: string; addedAt: number }
+  row: DbTrack & { playlistEntryId: string; addedAt: number },
+  overrides?: { addedAt?: number }
 ): PlaylistTrackItem {
   return {
     ...mapTrack(row),
     playlistEntryId: row.playlistEntryId,
-    addedAt: row.addedAt,
+    addedAt: overrides?.addedAt ?? row.addedAt,
   }
 }
 
@@ -74,6 +83,8 @@ export function mapQueueItem(
     t_title: string | null
     t_artist: string | null
     t_album: string | null
+    t_artist_id: string | null
+    t_album_id: string | null
     t_duration_ms: number | null
     t_thumbnail_url: string | null
     t_canonical_url: string | null
@@ -94,6 +105,8 @@ export function mapQueueItem(
         title: row.t_title ?? "",
         artist: row.t_artist,
         album: row.t_album,
+        artistId: row.t_artist_id,
+        albumId: row.t_album_id,
         durationMs: row.t_duration_ms,
         thumbnailUrl: row.t_thumbnail_url,
         canonicalUrl: row.t_canonical_url ?? "",

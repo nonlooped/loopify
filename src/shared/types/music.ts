@@ -11,19 +11,13 @@ export type RepeatMode = "off" | "one" | "all"
 
 export type DownloadStatus = "not-downloaded" | "queued" | "downloading" | "downloaded" | "failed"
 
-export type ResolverFailureCode =
-  | "missing-binary"
-  | "unsupported-source"
-  | "network"
-  | "not-found"
-  | "expired"
-  | "resolver-error"
-
 export type Track = {
   id: string
   title: string
   artist: string | null
   album: string | null
+  artistId: string | null
+  albumId: string | null
   durationMs: number | null
   thumbnailUrl: string | null
   canonicalUrl: string
@@ -41,6 +35,7 @@ export type Track = {
 export type TrackCandidate = {
   title: string
   artist: string | null
+  album: string | null
   durationMs: number | null
   thumbnailUrl: string | null
   sourceUrl: string
@@ -50,17 +45,50 @@ export type TrackCandidate = {
   extractor: string | null
 }
 
-export type CatalogProvider = "itunes" | "deezer"
+export type CatalogSearchResult =
+  | { kind: "track"; track: CatalogTrack }
+  | { kind: "artist"; artist: CatalogArtist }
+  | { kind: "album"; album: CatalogAlbum }
 
-/** A song-level result from a music catalog (iTunes / Deezer). Distinct from TrackCandidate, which is
+export type CatalogArtist = {
+  deezerId: number
+  name: string
+  pictureUrl: string | null
+}
+
+export type CatalogAlbum = {
+  deezerId: number
+  title: string
+  artistName: string
+  coverUrl: string | null
+  trackCount: number
+  albumType: string
+}
+
+export type ArtistDiscography = {
+  artist: CatalogArtist
+  topTracks: CatalogTrack[]
+  albums: CatalogAlbum[]
+  singles: CatalogAlbum[]
+  compilations: CatalogAlbum[]
+}
+
+export type AlbumDetails = {
+  album: CatalogAlbum
+  tracks: CatalogTrack[]
+}
+
+/** A song-level result from the Deezer catalog. Distinct from TrackCandidate, which is
  *  source-resolved (has a playable provider URL). Catalog hits become candidates only after stage-2
  *  resolution finds an audio source for them. */
 export type CatalogTrack = {
-  catalogProvider: CatalogProvider
+  catalogProvider: "deezer"
   catalogId: string
   title: string
   artist: string
+  artistDeezerId?: number
   album: string | null
+  albumDeezerId?: number
   artworkUrl: string | null
   durationMs: number
   isrc: string | null
@@ -209,10 +237,8 @@ export type AppSettings = {
   importMatchConcurrency: number
   /** Minimum `trackMatchScore` to accept a Spotify → yt-dlp result. */
   spotifyMatchScoreThreshold: number
-  /** Use iTunes/Deezer to replace YouTube-y titles and thumbnails. */
-  metadataEnrichmentEnabled: boolean
-  /** Minimum match score to apply catalog metadata (0–1). */
-  metadataMinScore: number
+  /** Minimum match score to apply Deezer metadata (0–1). */
+  deezerMatchThreshold: number
   /** Emit DB / IPC import update at most every N track completions. */
   importProgressThrottle: number
   /** Share active playback to Discord via Rich Presence. */

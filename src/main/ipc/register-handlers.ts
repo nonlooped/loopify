@@ -36,11 +36,13 @@ type HandlerDeps = {
 const nonEmptyString = z.string().trim().min(1)
 const nullableNonEmptyString = z.string().trim().min(1).nullable()
 const catalogTrackSchema = z.object({
-  catalogProvider: z.enum(["itunes", "deezer"]),
-  catalogId: nonEmptyString,
-  title: nonEmptyString,
-  artist: nonEmptyString,
+  catalogProvider: z.literal("deezer"),
+  catalogId: z.string().min(1),
+  title: z.string().min(1),
+  artist: z.string().min(1),
+  artistDeezerId: z.number().optional(),
   album: z.string().nullable(),
+  albumDeezerId: z.number().optional(),
   artworkUrl: z.string().nullable(),
   durationMs: z.number().int().positive(),
   isrc: z.string().nullable(),
@@ -63,6 +65,7 @@ const repeatModeSchema = z.enum(["off", "one", "all"])
 const trackCandidateSchema = z.object({
   title: nonEmptyString,
   artist: nullableNonEmptyString,
+  album: nullableNonEmptyString,
   durationMs: z.number().int().nonnegative().nullable(),
   thumbnailUrl: z.string().nullable(),
   sourceUrl: nonEmptyString,
@@ -136,18 +139,10 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     if (!nextId) return
     const next = deps.queue.get(nextId)
     if (!next) return
-    // Only prefetch if it doesn't already have a resolved track joined in.
     if (next.track) return
     if (next.status === "resolving" || next.status === "ready") return
     resolveQueueItemInBackground({ id: next.id, sourceUrl: next.sourceUrl })
   }
-
-  // When the resolver finishes background metadata enrichment, refresh the library row and
-  // re-emit the queue so any rendered queue items pick up the corrected title/artwork.
-  deps.resolver.setOnCandidateEnriched((_sourceUrl, candidate) => {
-    deps.library.upsertTrack(candidate)
-    emitQueue()
-  })
 
   const playQueueItem = async (queueItemId: string) => {
     const item = deps.queue.get(nonEmptyString.parse(queueItemId))
@@ -244,6 +239,21 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       .parse(input)
     return deps.resolver.search(parsed.text)
   })
+  ipcMain.handle(ipcChannels.searchQueryTracks, (_event, q) =>
+    deps.resolver.searchTracks(nonEmptyString.parse(q))
+  )
+  ipcMain.handle(ipcChannels.searchQueryArtists, (_event, q) =>
+    deps.resolver.searchArtists(nonEmptyString.parse(q))
+  )
+  ipcMain.handle(ipcChannels.searchQueryAlbums, (_event, q) =>
+    deps.resolver.searchAlbums(nonEmptyString.parse(q))
+  )
+  ipcMain.handle(ipcChannels.catalogGetArtist, (_event, deezerId) =>
+    deps.resolver.getArtist(z.number().int().positive().parse(deezerId))
+  )
+  ipcMain.handle(ipcChannels.catalogGetAlbum, (_event, deezerId) =>
+    deps.resolver.getAlbum(z.number().int().positive().parse(deezerId))
+  )
   ipcMain.handle(ipcChannels.resolverResolve, (_event, input) =>
     deps.resolver.resolve(nonEmptyString.parse(input))
   )
@@ -256,12 +266,15 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     const parsed = z
       .object({ sourceUrl: nonEmptyString, playNow: z.boolean().optional() })
       .parse(input)
+    // Map Deezer canonical URLs to their stored YouTube source URLs if available
+    const effectiveUrl =
+      deps.library.findSourceUrlByCanonicalUrl(parsed.sourceUrl) ?? parsed.sourceUrl
     if (parsed.playNow) {
       await deps.player.stop()
       deps.queue.clear()
       emitQueue()
     }
-    const queue = deps.queue.add(parsed.sourceUrl)
+    const queue = deps.queue.add(effectiveUrl)
     const item = queue[queue.length - 1]
     if (parsed.playNow && item) {
       await playQueueItem(item.id)
@@ -283,11 +296,14 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     if (parsed.sourceUrls.length === 0) {
       return deps.queue.list()
     }
+    // Map Deezer canonical URLs to stored YouTube source URLs
+    const urlMap = deps.library.findSourceUrlsForCanonicalUrls(parsed.sourceUrls)
+    const mappedUrls = parsed.sourceUrls.map((url) => urlMap.get(url) ?? url)
     if (parsed.playFromStart) {
       await deps.player.stop()
       deps.queue.clear()
       emitQueue()
-      for (const sourceUrl of parsed.sourceUrls) {
+      for (const sourceUrl of mappedUrls) {
         deps.queue.add(sourceUrl)
       }
       const list = deps.queue.list()
@@ -302,7 +318,7 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       }
       return emitQueue()
     }
-    for (const sourceUrl of parsed.sourceUrls) {
+    for (const sourceUrl of mappedUrls) {
       deps.queue.add(sourceUrl)
       const list = deps.queue.list()
       const last = list[list.length - 1]
@@ -450,8 +466,7 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
         importMaxTracks: z.number().int().min(1).max(500).optional(),
         importMatchConcurrency: z.number().int().min(1).max(16).optional(),
         spotifyMatchScoreThreshold: z.number().min(0).max(1).optional(),
-        metadataEnrichmentEnabled: z.boolean().optional(),
-        metadataMinScore: z.number().min(0).max(1).optional(),
+        deezerMatchThreshold: z.number().min(0).max(1).optional(),
         importProgressThrottle: z.number().int().min(1).max(100).optional(),
         discordPresenceEnabled: z.boolean().optional(),
       })
