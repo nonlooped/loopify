@@ -41,6 +41,7 @@ const api: LoopifyApi = {
   catalog: {
     getArtist: (deezerId) => ipcRenderer.invoke(ipcChannels.catalogGetArtist, deezerId),
     getAlbum: (deezerId) => ipcRenderer.invoke(ipcChannels.catalogGetAlbum, deezerId),
+    getTrackNavInfo: (trackId) => ipcRenderer.invoke(ipcChannels.catalogGetTrackNavInfo, trackId),
   },
   resolver: {
     resolve: (input) => ipcRenderer.invoke(ipcChannels.resolverResolve, input),

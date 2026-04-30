@@ -26,6 +26,7 @@ import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { modArrowHint, playPauseHint } from "@/lib/keyboard-shortcuts"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut, isMacLike } from "@/lib/shortcut"
+import { navigateFromArtist, navigateFromTrack } from "@/lib/track-nav"
 import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
 import { SyncedLyricsView } from "./SyncedLyricsView"
@@ -399,15 +400,28 @@ export function FloatingIsland() {
               )}
             </div>
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden py-1 pr-1">
-              <span
-                className="truncate text-[0.9375rem] font-semibold tracking-[-0.018em] text-foreground sm:text-base"
+              <button
+                type="button"
+                disabled={!currentTrack}
+                onClick={() => {
+                  if (currentTrack) void navigateFromTrack(currentTrack)
+                }}
+                className="truncate text-left text-[0.9375rem] font-semibold tracking-[-0.018em] text-foreground cursor-pointer hover:underline disabled:cursor-default disabled:no-underline sm:text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 title={title}
               >
                 {title}
-              </span>
-              <span className="type-meta truncate text-muted" title={currentArtist}>
+              </button>
+              <button
+                type="button"
+                disabled={!currentTrack}
+                onClick={() => {
+                  if (currentTrack) void navigateFromArtist(currentTrack)
+                }}
+                className="type-meta truncate text-left text-muted cursor-pointer hover:text-foreground disabled:cursor-default disabled:hover:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                title={currentArtist}
+              >
                 {currentArtist}
-              </span>
+              </button>
             </div>
           </div>
 

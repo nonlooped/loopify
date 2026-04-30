@@ -394,6 +394,24 @@ export class LibraryRepository {
     return row ? mapTrack(row) : null
   }
 
+  getTrackNavInfo(trackId: string): { artistDeezerId?: number; albumDeezerId?: number } | null {
+    const row = this.db
+      .select({
+        artistDeezerId: schema.artists.deezerId,
+        albumDeezerId: schema.albums.deezerId,
+      })
+      .from(schema.tracks)
+      .leftJoin(schema.artists, eq(schema.artists.id, schema.tracks.artistId))
+      .leftJoin(schema.albums, eq(schema.albums.id, schema.tracks.albumId))
+      .where(eq(schema.tracks.id, trackId))
+      .get()
+    if (!row) return null
+    const result: { artistDeezerId?: number; albumDeezerId?: number } = {}
+    if (row.artistDeezerId != null) result.artistDeezerId = row.artistDeezerId
+    if (row.albumDeezerId != null) result.albumDeezerId = row.albumDeezerId
+    return Object.keys(result).length > 0 ? result : null
+  }
+
   saveCandidateInTransaction(
     candidate: TrackCandidate,
     targetPlaylistId: string,

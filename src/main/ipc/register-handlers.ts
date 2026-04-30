@@ -254,6 +254,31 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   ipcMain.handle(ipcChannels.catalogGetAlbum, (_event, deezerId) =>
     deps.resolver.getAlbum(z.number().int().positive().parse(deezerId))
   )
+  ipcMain.handle(ipcChannels.catalogGetTrackNavInfo, async (_event, trackId) => {
+    const parsedTrackId = nonEmptyString.parse(trackId)
+    const local = deps.library.getTrackNavInfo(parsedTrackId)
+    if (local?.albumDeezerId != null || local?.artistDeezerId != null) {
+      return local
+    }
+
+    const track = deps.library.getTrack(parsedTrackId)
+    if (!track) return null
+
+    const query = [track.title, track.artist].filter(Boolean).join(" ")
+    if (!query) return null
+
+    try {
+      const hits = await deps.resolver.searchTracks(query)
+      const hit = hits[0]
+      if (!hit) return null
+      const result: { artistDeezerId?: number; albumDeezerId?: number } = {}
+      if (hit.artistDeezerId != null) result.artistDeezerId = hit.artistDeezerId
+      if (hit.albumDeezerId != null) result.albumDeezerId = hit.albumDeezerId
+      return Object.keys(result).length > 0 ? result : null
+    } catch {
+      return null
+    }
+  })
   ipcMain.handle(ipcChannels.resolverResolve, (_event, input) =>
     deps.resolver.resolve(nonEmptyString.parse(input))
   )

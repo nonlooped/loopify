@@ -26,7 +26,7 @@ import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
 
 const rowBase =
-  "group relative flex w-full min-w-0 min-h-[44px] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
+  "group relative flex w-full min-w-0 min-h-[56px] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-[transform,opacity,background-color,color,box-shadow] duration-ui ease-out-quart motion-reduce:transition-none"
 
 const rowInteractive = cn(
   rowBase,
@@ -42,7 +42,7 @@ const rowActive = cn(
 
 const iconWrap = (active: boolean) =>
   cn(
-    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-ui ease-out-quart",
+    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors duration-ui ease-out-quart",
     active ? "bg-accent/15 text-accent" : "bg-white/5 text-muted group-hover:text-foreground"
   )
 
@@ -96,7 +96,7 @@ export function NavRail() {
     <aside
       className={cn(
         "relative z-40 flex h-full min-h-0 shrink-0 flex-col border-r border-border/40",
-        "bg-surface text-foreground",
+        "bg-surface/95 text-foreground backdrop-blur-3xl",
         "transition-[width] duration-300 ease-out-quart motion-reduce:transition-none",
         isExpanded ? "w-64" : "w-20"
       )}

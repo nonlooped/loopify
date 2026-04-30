@@ -87,6 +87,9 @@ export type LoopifyApi = {
   catalog: {
     getArtist: (deezerId: number) => Promise<ArtistDiscography>
     getAlbum: (deezerId: number) => Promise<AlbumDetails>
+    getTrackNavInfo: (
+      trackId: string
+    ) => Promise<{ artistDeezerId?: number; albumDeezerId?: number } | null>
   }
   resolver: {
     resolve: (input: string) => Promise<ResolvedTrack>
@@ -164,6 +167,7 @@ export const ipcChannels = {
   searchQueryAlbums: "search:query-albums",
   catalogGetArtist: "catalog:get-artist",
   catalogGetAlbum: "catalog:get-album",
+  catalogGetTrackNavInfo: "catalog:get-track-nav-info",
   resolverResolve: "resolver:resolve",
   resolverResolveCatalog: "resolver:resolve-catalog",
   queueChanged: "queue:changed",

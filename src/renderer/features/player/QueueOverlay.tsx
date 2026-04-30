@@ -35,6 +35,7 @@ import { cn } from "@/lib/cn"
 import { buildTrackContextMenu } from "@/lib/context-menu-items"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut } from "@/lib/shortcut"
+import { navigateFromArtist, navigateFromTrack } from "@/lib/track-nav"
 import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
 
@@ -168,21 +169,22 @@ function SortableQueueItem({
 
       {isOpen ? (
         <>
-          <button
-            type="button"
-            onClick={() => onPlay(item)}
-            title={`${title} - ${artist}`}
-            className="min-w-0 flex-1 overflow-hidden text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
+          <div className="min-w-0 flex-1 overflow-hidden">
             <div className="flex items-center gap-2">
-              <span
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (item.track) void navigateFromTrack(item.track)
+                }}
+                disabled={!item.track}
                 className={cn(
-                  "type-body-sm block truncate text-nowrap animate-in-sidebar-copy",
+                  "type-body-sm block truncate text-nowrap animate-in-sidebar-copy cursor-pointer text-left hover:underline disabled:cursor-default disabled:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
                   isActive ? "text-accent" : "text-foreground"
                 )}
               >
                 {title}
-              </span>
+              </button>
               {item.track?.downloadStatus === "downloaded" && (
                 <CheckCircle2
                   className="h-3.5 w-3.5 shrink-0 text-accent/70 animate-in-sidebar-copy"
@@ -197,10 +199,18 @@ function SortableQueueItem({
                 />
               )}
             </div>
-            <span className="type-meta block truncate text-nowrap text-muted animate-in-sidebar-copy">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (item.track) void navigateFromArtist(item.track)
+              }}
+              disabled={!item.track}
+              className="type-meta block truncate text-nowrap text-left text-muted cursor-pointer hover:text-foreground disabled:cursor-default disabled:hover:text-muted animate-in-sidebar-copy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
               {artist}
-            </span>
-          </button>
+            </button>
+          </div>
           {item.track && (
             <>
               <IconButton

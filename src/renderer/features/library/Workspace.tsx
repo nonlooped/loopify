@@ -33,6 +33,7 @@ import { buildPlaylistContextMenu, buildTrackContextMenu } from "@/lib/context-m
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { downloadTitle, formatPlaylistMeta, formatTrackDuration } from "@/lib/music-format"
 import { formatModShortcut, searchShortcutProse } from "@/lib/shortcut"
+import { navigateFromArtist, navigateFromTrack } from "@/lib/track-nav"
 import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
 import { AlbumPage } from "./AlbumPage"
@@ -952,7 +953,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
       )}
       <button
         type="button"
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 rounded-lg py-1 pl-1 text-left"
+        className="flex shrink-0 cursor-pointer items-center gap-4 rounded-lg py-1 pl-1 text-left"
         onClick={onPlay}
       >
         <span className="type-body-sm w-8 text-center tabular-nums text-muted group-hover:hidden">
@@ -972,12 +973,30 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
             />
           )}
         </div>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="type-body-sm truncate text-foreground">{track.title}</span>
-          <span className="type-meta truncate text-muted">{track.artist}</span>
-        </div>
-        <span className="type-body-sm shrink-0 tabular-nums text-subtle">{durationLabel}</span>
       </button>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            void navigateFromTrack(track)
+          }}
+          className="type-body-sm block w-full truncate text-left text-foreground cursor-pointer hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          {track.title}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            void navigateFromArtist(track)
+          }}
+          className="type-meta block w-full truncate text-left text-muted cursor-pointer hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          {track.artist}
+        </button>
+      </div>
+      <span className="type-body-sm shrink-0 tabular-nums text-subtle">{durationLabel}</span>
       {(onEnqueueTrack ||
         handleToggleLikeTrack ||
         handleDownloadTrack ||

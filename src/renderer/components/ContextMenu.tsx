@@ -419,7 +419,7 @@ const MenuItemRow = function MenuItemRowImpl({
       aria-expanded={isSubmenu ? isExpanded : undefined}
       tabIndex={isFocused ? 0 : -1}
       className={cn(
-        "flex min-h-[32px] cursor-pointer select-none items-center gap-2 rounded-md px-3 outline-none transition-colors duration-100 ease-out",
+        "flex min-h-[32px] cursor-pointer select-none items-center gap-2 rounded-md px-3 outline-none transition-colors duration-ui ease-out-quart motion-reduce:transition-none",
         isFocused && !isDisabled && !isDestructive && "bg-white/[0.08]",
         isDisabled && "pointer-events-none opacity-50",
         isDestructive && !isDisabled && !isFocused && "text-danger/90",

@@ -16,7 +16,7 @@ import { create } from "zustand"
 import type { PlaylistActionState } from "../features/shell/PlaylistActionModal"
 import { NEAR_END_OFFSET_SEC } from "../lib/keyboard-shortcuts"
 
-type LibraryView =
+export type LibraryView =
   | { kind: "collection" }
   | { kind: "playlist"; id: string }
   | { kind: "artist"; deezerId: number }
@@ -124,6 +124,7 @@ interface AppState {
   playlists: Playlist[]
   queue: QueueItem[]
   libraryView: LibraryView
+  previousLibraryView: LibraryView | null
 
   isSearchOpen: boolean
   searchQuery: string
@@ -155,6 +156,7 @@ interface AppState {
 
   setLibraryView: (view: LibraryView) => void
   selectPlaylistWithTransition: (id: string | null) => void
+  goBack: () => void
 
   performSearch: (query: string) => Promise<void>
   setSearchTab: (tab: SearchTab) => void
@@ -223,6 +225,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   playlists: [],
   queue: [],
   libraryView: { kind: "collection" },
+  previousLibraryView: null,
 
   isSearchOpen: false,
   searchQuery: "",
@@ -329,7 +332,16 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   setLibraryView: (view: LibraryView) => {
-    set({ libraryView: view })
+    set((state) => ({ previousLibraryView: state.libraryView, libraryView: view }))
+  },
+
+  goBack: () => {
+    set((state) => {
+      if (!state.previousLibraryView) {
+        return { libraryView: { kind: "collection" }, previousLibraryView: null }
+      }
+      return { libraryView: state.previousLibraryView, previousLibraryView: null }
+    })
   },
 
   selectPlaylistWithTransition: (id) => {
@@ -346,14 +358,14 @@ export const useAppStore = create<AppState>()((set, get) => ({
           : null
 
     if (!direction || typeof doc.startViewTransition !== "function") {
-      set({ libraryView: nextView })
+      set((state) => ({ previousLibraryView: state.libraryView, libraryView: nextView }))
       return
     }
 
     root.dataset.playlistNav = direction
     const transition = doc.startViewTransition(() => {
       flushSync(() => {
-        set({ libraryView: nextView })
+        set((state) => ({ previousLibraryView: state.libraryView, libraryView: nextView }))
       })
     })
 

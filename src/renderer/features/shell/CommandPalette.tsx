@@ -7,6 +7,11 @@ import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
+import {
+  buildAlbumContextMenu,
+  buildArtistContextMenu,
+  buildCatalogTrackContextMenu,
+} from "@/lib/context-menu-items"
 import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
 
@@ -342,61 +347,12 @@ export function CommandPalette() {
                     data-active-item={index === activeIndex || undefined}
                     onContextMenu={(e) => {
                       e.preventDefault()
-                      showContextMenu(e, [
-                        {
-                          type: "item",
-                          label: "Play",
-                          icon: <Play className="h-4 w-4" />,
-                          onSelect: () => {
-                            void withResolution(hit, (c) => {
-                              useAppStore.getState().handlePlayTrack(c)
-                              useAppStore.getState().toggleSearch(false)
-                            })
-                          },
-                        },
-                        {
-                          type: "item",
-                          label: "Add to Queue",
-                          icon: <Plus className="h-4 w-4" />,
-                          onSelect: () => {
-                            void withResolution(hit, (c) =>
-                              useAppStore.getState().handleEnqueueTrack(c)
-                            )
-                          },
-                        },
-                        { type: "separator" },
-                        {
-                          type: "item",
-                          label: "Like",
-                          icon: <Heart className="h-4 w-4" />,
-                          onSelect: () => {
-                            void withResolution(hit, (c) =>
-                              useAppStore.getState().handleLikeCandidate(c)
-                            )
-                          },
-                        },
-                        {
-                          type: "item",
-                          label: "Download",
-                          icon: <Download className="h-4 w-4" />,
-                          onSelect: () => {
-                            void withResolution(hit, (c) =>
-                              useAppStore.getState().handleDownloadCandidate(c)
-                            )
-                          },
-                        },
-                        { type: "separator" },
-                        {
-                          type: "item",
-                          label: "Copy Title \u0026 Artist",
-                          icon: <ExternalLink className="h-4 w-4" />,
-                          onSelect: () => {
-                            navigator.clipboard
-                              .writeText([hit.title, hit.artist].filter(Boolean).join(" \u2014 "))
-                              .catch(() => {})
-                          },
-                        },
-                      ])
+                      showContextMenu(
+                        e,
+                        buildCatalogTrackContextMenu(hit, {
+                          onPlay: () => useAppStore.getState().toggleSearch(false),
+                        })
+                      )
                     }}
                     className={cn(
                       "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-ui ease-out-quart",
@@ -505,6 +461,10 @@ export function CommandPalette() {
                         .setLibraryView({ kind: "artist", deezerId: artist.deezerId })
                       useAppStore.getState().toggleSearch(false)
                     }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      showContextMenu(e, buildArtistContextMenu(artist))
+                    }}
                     className={cn(
                       "group flex items-center gap-3 rounded-xl px-3 py-2.5 w-full text-left transition-colors duration-ui ease-out-quart",
                       index === activeIndex ? "bg-white/8" : "hover:bg-white/5"
@@ -539,6 +499,10 @@ export function CommandPalette() {
                         .getState()
                         .setLibraryView({ kind: "album", deezerId: album.deezerId })
                       useAppStore.getState().toggleSearch(false)
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      showContextMenu(e, buildAlbumContextMenu(album))
                     }}
                     className={cn(
                       "group flex items-center gap-3 rounded-xl px-3 py-2.5 w-full text-left transition-colors duration-ui ease-out-quart",

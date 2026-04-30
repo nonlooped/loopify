@@ -1,6 +1,7 @@
 import {
   Copy,
   Download,
+  ExternalLink,
   Heart,
   ListMusic,
   ListPlus,
@@ -11,6 +12,9 @@ import {
   XCircle,
 } from "lucide-react"
 import {
+  type CatalogAlbum,
+  type CatalogArtist,
+  type CatalogTrack,
   isSystemPlaylistId,
   LIKED_SONGS_PLAYLIST_ID,
   type Playlist,
@@ -143,7 +147,7 @@ export function buildTrackContextMenu(opts: TrackContextMenuOptions): ContextMen
     onSelect: () => navigator.clipboard.writeText(track.canonicalUrl).catch(() => {}),
   })
 
-  const artistTitle = [track.title, track.artist].filter(Boolean).join(" — ")
+  const artistTitle = [track.title, track.artist].filter(Boolean).join(": ")
   if (artistTitle) {
     items.push({
       type: "item",
@@ -347,6 +351,175 @@ function buildAddToPlaylistSubmenu(track: Track, currentPlaylistId?: string): Co
 }
 
 /* ---------------------------------------------------------------------------
- * Search result context menu
- * Used for: CommandPalette search results
+ * Catalog track context menu
+ * Used for: ArtistPage top tracks, AlbumPage tracks, CommandPalette tracks
  * ----------------------------------------------------------------------- */
+
+export function buildCatalogTrackContextMenu(
+  track: CatalogTrack,
+  opts?: { onPlay?: () => void; onEnqueue?: () => void }
+): ContextMenuItem[] {
+  const store = useAppStore.getState()
+  const items: ContextMenuItem[] = []
+
+  items.push({
+    type: "item",
+    label: "Play",
+    icon: <Play className="h-4 w-4" />,
+    onSelect: () => {
+      void window.loopify.resolver.resolveCatalog(track).then((candidate) => {
+        void store.handlePlayTrack(candidate)
+        opts?.onPlay?.()
+      })
+    },
+  })
+
+  items.push({
+    type: "item",
+    label: "Add to Queue",
+    icon: <ListPlus className="h-4 w-4" />,
+    onSelect: () => {
+      void window.loopify.resolver.resolveCatalog(track).then((candidate) => {
+        void store.handleEnqueueTrack(candidate)
+        opts?.onEnqueue?.()
+      })
+    },
+  })
+
+  items.push({ type: "separator" })
+
+  items.push({
+    type: "item",
+    label: "Like",
+    icon: <Heart className="h-4 w-4" />,
+    onSelect: () => {
+      void window.loopify.resolver.resolveCatalog(track).then((candidate) => {
+        void store.handleLikeCandidate(candidate)
+      })
+    },
+  })
+
+  items.push({
+    type: "item",
+    label: "Download",
+    icon: <Download className="h-4 w-4" />,
+    onSelect: () => {
+      void window.loopify.resolver.resolveCatalog(track).then((candidate) => {
+        void store.handleDownloadCandidate(candidate)
+      })
+    },
+  })
+
+  items.push({ type: "separator" })
+
+  const artistTitle = [track.title, track.artist].filter(Boolean).join(": ")
+  if (artistTitle) {
+    items.push({
+      type: "item",
+      label: "Copy Title & Artist",
+      icon: <Copy className="h-4 w-4" />,
+      onSelect: () => navigator.clipboard.writeText(artistTitle).catch(() => {}),
+    })
+  }
+
+  return items
+}
+
+/* ---------------------------------------------------------------------------
+ * Album context menu
+ * Used for: ArtistPage album grids, CommandPalette album results
+ * ----------------------------------------------------------------------- */
+
+async function resolveAndEnqueueCatalogTracks(tracks: CatalogTrack[], playFirst = false) {
+  const store = useAppStore.getState()
+  const limit = 4
+  let i = 0
+  let hasPlayedFirst = !playFirst
+
+  const next = async () => {
+    if (i >= tracks.length) return
+    const track = tracks[i++]
+    try {
+      const candidate = await window.loopify.resolver.resolveCatalog(track)
+      if (!hasPlayedFirst) {
+        hasPlayedFirst = true
+        await store.handlePlayTrack(candidate)
+      } else {
+        await store.handleEnqueueTrack(candidate)
+      }
+    } catch (err) {
+      console.error("Source resolution failed:", err)
+    }
+    void next()
+  }
+
+  for (let n = 0; n < Math.min(limit, tracks.length); n++) void next()
+}
+
+export function buildAlbumContextMenu(album: CatalogAlbum): ContextMenuItem[] {
+  const store = useAppStore.getState()
+
+  return [
+    {
+      type: "item",
+      label: "Play All",
+      icon: <Play className="h-4 w-4" />,
+      onSelect: async () => {
+        try {
+          const data = await window.loopify.catalog.getAlbum(album.deezerId)
+          await resolveAndEnqueueCatalogTracks(data.tracks, true)
+        } catch (err) {
+          console.error("Failed to play album:", err)
+          store.setActionError(err instanceof Error ? err.message : "Could not play that album.")
+        }
+      },
+    },
+    {
+      type: "item",
+      label: "Add to Queue",
+      icon: <ListPlus className="h-4 w-4" />,
+      onSelect: async () => {
+        try {
+          const data = await window.loopify.catalog.getAlbum(album.deezerId)
+          await resolveAndEnqueueCatalogTracks(data.tracks, false)
+        } catch (err) {
+          console.error("Failed to enqueue album:", err)
+          store.setActionError(
+            err instanceof Error ? err.message : "Could not add that album to the queue."
+          )
+        }
+      },
+    },
+    { type: "separator" },
+    {
+      type: "item",
+      label: "Copy Album Name",
+      icon: <Copy className="h-4 w-4" />,
+      onSelect: () => navigator.clipboard.writeText(album.title).catch(() => {}),
+    },
+  ]
+}
+
+/* ---------------------------------------------------------------------------
+ * Artist context menu
+ * Used for: CommandPalette artist results
+ * ----------------------------------------------------------------------- */
+
+export function buildArtistContextMenu(artist: CatalogArtist): ContextMenuItem[] {
+  return [
+    {
+      type: "item",
+      label: "View Artist",
+      icon: <ExternalLink className="h-4 w-4" />,
+      onSelect: () => {
+        useAppStore.getState().setLibraryView({ kind: "artist", deezerId: artist.deezerId })
+      },
+    },
+    {
+      type: "item",
+      label: "Copy Artist Name",
+      icon: <Copy className="h-4 w-4" />,
+      onSelect: () => navigator.clipboard.writeText(artist.name).catch(() => {}),
+    },
+  ]
+}

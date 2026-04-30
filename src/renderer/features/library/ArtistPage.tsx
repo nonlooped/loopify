@@ -1,14 +1,44 @@
 import { Download, Heart, Loader2, Play, Plus } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import type { ArtistDiscography, CatalogTrack, TrackCandidate } from "src/shared/types/music"
+import type {
+  ArtistDiscography,
+  CatalogAlbum,
+  CatalogTrack,
+  TrackCandidate,
+} from "src/shared/types/music"
+import { Button } from "@/components/Button"
+import { EmptyState } from "@/components/EmptyState"
+import { IconButton } from "@/components/IconButton"
+import { buildAlbumContextMenu, buildCatalogTrackContextMenu } from "@/lib/context-menu-items"
 import { formatTrackDuration } from "@/lib/music-format"
+import { navigateFromTrack } from "@/lib/track-nav"
+import type { LibraryView } from "@/stores/app.store"
 import { useAppStore } from "@/stores/app.store"
+import { showContextMenu } from "@/stores/context-menu.store"
+
+function getBackLabel(view: LibraryView | null): string {
+  if (!view) return "Back to Collection"
+  switch (view.kind) {
+    case "collection":
+      return "Back to Collection"
+    case "playlist":
+      return "Back to Playlist"
+    case "artist":
+      return "Back to Artist"
+    case "album":
+      return "Back to Album"
+    default:
+      return "Back to Collection"
+  }
+}
 
 export function ArtistPage({ deezerId }: { deezerId: number }) {
   const [data, setData] = useState<ArtistDiscography | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const setLibraryView = useAppStore((s) => s.setLibraryView)
+  const previousLibraryView = useAppStore((s) => s.previousLibraryView)
+  const goBack = useAppStore((s) => s.goBack)
 
   useEffect(() => {
     let cancelled = false
@@ -44,14 +74,21 @@ export function ArtistPage({ deezerId }: { deezerId: number }) {
   if (error) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-16 text-center">
-        <p className="type-body text-danger">{error}</p>
-        <button
-          type="button"
-          onClick={() => setLibraryView({ kind: "collection" })}
-          className="type-label mt-4 cursor-pointer text-muted hover:text-foreground"
-        >
-          ← Back to Collection
-        </button>
+        <EmptyState
+          density="compact"
+          title="Could not load artist"
+          description={error}
+          actions={
+            <Button
+              type="button"
+              variant="ghost"
+              size="md"
+              onClick={() => setLibraryView({ kind: "collection" })}
+            >
+              Back to Collection
+            </Button>
+          }
+        />
       </div>
     )
   }
@@ -80,14 +117,17 @@ export function ArtistPage({ deezerId }: { deezerId: number }) {
     for (let n = 0; n < Math.min(limit, toResolve.length); n++) next()
   }
 
+  const hasAnyContent =
+    topTracks.length > 0 || albums.length > 0 || singles.length > 0 || compilations.length > 0
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 pt-10 pb-10 sm:px-8 sm:pt-12 sm:pb-12">
       <button
         type="button"
-        onClick={() => setLibraryView({ kind: "collection" })}
-        className="cursor-pointer type-label text-muted transition-colors hover:text-foreground"
+        onClick={goBack}
+        className="cursor-pointer type-label text-muted transition-colors duration-ui ease-out-quart hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
-        ← Back to Collection
+        {getBackLabel(previousLibraryView)}
       </button>
 
       <div className="mt-6 flex items-end gap-6 sm:mt-8">
@@ -99,17 +139,19 @@ export function ArtistPage({ deezerId }: { deezerId: number }) {
           />
         )}
         <div className="min-w-0 flex-1">
-          <h1 className="type-display text-foreground sm:text-[3.25rem] md:text-[3.75rem] lg:text-[4.5rem]">
+          <h1 className="type-display mb-3 text-foreground sm:text-[3.25rem] md:text-[3.75rem] lg:text-[4.5rem]">
             {artist.name}
           </h1>
-          <button
+          <Button
             type="button"
+            size="lg"
+            className="gap-2 rounded-full"
             onClick={playAll}
-            className="mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-accent px-6 text-on-accent type-label cursor-pointer hover:scale-105 active:scale-95 transition-transform duration-press"
+            disabled={topTracks.length === 0}
           >
             <Play className="h-4 w-4 fill-current" />
             Play All
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -122,18 +164,33 @@ export function ArtistPage({ deezerId }: { deezerId: number }) {
               return (
                 <li
                   key={track.catalogId}
-                  className="group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-white/5"
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors duration-ui ease-out-quart hover:bg-white/5"
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    showContextMenu(e, buildCatalogTrackContextMenu(track))
+                  }}
                 >
                   <span className="type-body-sm w-8 text-center tabular-nums text-muted">
                     {i + 1}
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="type-body-sm truncate text-foreground">{track.title}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void navigateFromTrack(track)
+                      }}
+                      className="type-body-sm block w-full truncate text-left text-foreground cursor-pointer hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                    >
+                      {track.title}
+                    </button>
                     <span className="type-meta truncate text-muted">
-                      {formatTrackDuration(track.durationMs)}
+                      {track.features.length > 0
+                        ? `feat. ${track.features.join(", ")} · ${formatTrackDuration(track.durationMs)}`
+                        : formatTrackDuration(track.durationMs)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-0 transition-opacity duration-ui ease-out-quart group-hover:opacity-100">
                     {isResolving ? (
                       <Loader2 className="h-5 w-5 text-muted animate-spin" />
                     ) : (
@@ -145,43 +202,50 @@ export function ArtistPage({ deezerId }: { deezerId: number }) {
                               useAppStore.getState().handlePlayTrack(c)
                             )
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-on-accent"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-accent text-on-accent transition-[colors,transform] duration-ui ease-out-quart hover:bg-accent-bright active:scale-[0.95] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:active:scale-100"
+                          aria-label={`Play ${track.title}`}
                         >
                           <Play className="h-3 w-3 fill-current ml-0.5" />
                         </button>
-                        <button
+                        <IconButton
                           type="button"
+                          size="sm"
+                          title={`Add ${track.title} to queue`}
+                          aria-label={`Add ${track.title} to queue`}
                           onClick={() =>
                             void withResolution(track, (c) =>
                               useAppStore.getState().handleEnqueueTrack(c)
                             )
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10"
                         >
                           <Plus className="h-3 w-3" />
-                        </button>
-                        <button
+                        </IconButton>
+                        <IconButton
                           type="button"
+                          size="sm"
+                          title={`Like ${track.title}`}
+                          aria-label={`Like ${track.title}`}
                           onClick={() =>
                             void withResolution(track, (c) =>
                               useAppStore.getState().handleLikeCandidate(c)
                             )
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10"
                         >
                           <Heart className="h-3 w-3" />
-                        </button>
-                        <button
+                        </IconButton>
+                        <IconButton
                           type="button"
+                          size="sm"
+                          title={`Download ${track.title}`}
+                          aria-label={`Download ${track.title}`}
                           onClick={() =>
                             void withResolution(track, (c) =>
                               useAppStore.getState().handleDownloadCandidate(c)
                             )
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10"
                         >
                           <Download className="h-3 w-3" />
-                        </button>
+                        </IconButton>
                       </>
                     )}
                   </div>
@@ -195,30 +259,38 @@ export function ArtistPage({ deezerId }: { deezerId: number }) {
       {albums.length > 0 && <AlbumSection title="Albums" albums={albums} />}
       {singles.length > 0 && <AlbumSection title="Singles & EPs" albums={singles} />}
       {compilations.length > 0 && <AlbumSection title="Compilations" albums={compilations} />}
+
+      {!hasAnyContent && (
+        <EmptyState
+          className="mx-auto mt-10 max-w-2xl"
+          density="compact"
+          title="No releases found"
+          description="This artist does not have any tracks or albums available at the moment."
+        />
+      )}
     </div>
   )
 }
 
-function AlbumSection({
-  title,
-  albums,
-}: {
-  title: string
-  albums: { deezerId: number; title: string; artistName: string; coverUrl: string | null }[]
-}) {
+function AlbumSection({ title, albums }: { title: string; albums: CatalogAlbum[] }) {
   const setLibraryView = useAppStore((s) => s.setLibraryView)
   return (
     <section className="mt-10">
       <h2 className="type-title mb-4 text-foreground">{title}</h2>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 lg:grid-cols-5">
         {albums.map((album) => (
-          <button
-            key={album.deezerId}
-            type="button"
-            onClick={() => setLibraryView({ kind: "album", deezerId: album.deezerId })}
-            className="group cursor-pointer text-left"
-          >
-            <div className="aspect-square overflow-hidden rounded-xl bg-raised shadow-md transition-transform group-hover:scale-[1.04]">
+          <div key={album.deezerId} className="group relative text-left">
+            <button
+              type="button"
+              onClick={() => setLibraryView({ kind: "album", deezerId: album.deezerId })}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                showContextMenu(e, buildAlbumContextMenu(album))
+              }}
+              className="absolute inset-0 z-[1] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              aria-label={`Open ${album.title}`}
+            />
+            <div className="aspect-square overflow-hidden rounded-xl bg-raised shadow-md transition-transform duration-ui ease-out-quart group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
               {album.coverUrl && (
                 <img
                   src={album.coverUrl}
@@ -230,7 +302,7 @@ function AlbumSection({
             </div>
             <p className="type-body-sm mt-2 truncate text-foreground">{album.title}</p>
             <p className="type-meta truncate text-muted">{album.artistName}</p>
-          </button>
+          </div>
         ))}
       </div>
     </section>
