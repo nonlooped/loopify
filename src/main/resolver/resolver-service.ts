@@ -368,10 +368,18 @@ export class ResolverService {
     const settings = this.settings.get()
     const ytdlpPath = resolveYtdlpPath(settings.ytdlpPath)
     return new Promise((resolve, reject) => {
+      const startedAt = performance.now()
+      const logElapsed = (outcome: string): void => {
+        const ms = performance.now() - startedAt
+        const preview =
+          args.length <= 4 ? args.join(" ") : `${args.slice(0, 3).join(" ")} …(+${args.length - 3})`
+        console.debug("[perf] resolver:yt-dlp", ms.toFixed(0), "ms", outcome, preview)
+      }
       const child = spawn(ytdlpPath, args, { stdio: ["ignore", "pipe", "pipe"] })
       let stdout = ""
       let stderr = ""
       const timeout = setTimeout(() => {
+        logElapsed("timeout")
         child.kill("SIGTERM")
         reject(new Error(`Resolver timed out after ${timeoutMs}ms.`))
       }, timeoutMs)
@@ -386,6 +394,7 @@ export class ResolverService {
       })
       child.on("error", (error: NodeJS.ErrnoException) => {
         clearTimeout(timeout)
+        logElapsed("spawn-error")
         if (error.code === "ENOENT") {
           reject(new Error(`Could not find yt-dlp at "${ytdlpPath}". Update the path in Settings.`))
           return
@@ -395,12 +404,16 @@ export class ResolverService {
       child.on("close", (code: number | null) => {
         clearTimeout(timeout)
         if (code !== 0) {
+          logElapsed(`exit-${code ?? "null"}`)
           reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}.`))
           return
         }
         try {
-          resolve(JSON.parse(stdout) as YtdlpEntry)
+          const parsed = JSON.parse(stdout) as YtdlpEntry
+          logElapsed("ok")
+          resolve(parsed)
         } catch {
+          logElapsed("invalid-json")
           reject(new Error("yt-dlp returned invalid JSON."))
         }
       })

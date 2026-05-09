@@ -155,14 +155,21 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       })
   }
 
+  /** Skip items that already have a track or are mid-resolve / playable — avoids re-resolving the whole queue on append. */
+  const backgroundResolveIfNeeded = (item: QueueItem): void => {
+    if (item.track) return
+    if (item.status === "resolving" || item.status === "ready" || item.status === "playing") {
+      return
+    }
+    resolveQueueItemInBackground({ id: item.id, sourceUrl: item.sourceUrl })
+  }
+
   const prefetchNextQueueItem = (afterId: string): void => {
     const nextId = deps.queue.nextItemId(afterId)
     if (!nextId) return
     const next = deps.queue.get(nextId)
     if (!next) return
-    if (next.track) return
-    if (next.status === "resolving" || next.status === "ready") return
-    resolveQueueItemInBackground({ id: next.id, sourceUrl: next.sourceUrl })
+    backgroundResolveIfNeeded(next)
   }
 
   const playQueueItem = async (queueItemId: string) => {
@@ -359,7 +366,7 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       return result
     }
     if (item) {
-      resolveQueueItemInBackground({ id: item.id, sourceUrl: item.sourceUrl })
+      backgroundResolveIfNeeded(item)
       const result = maybeStartFirstQueuedItem()
       const elapsed = performance.now() - start
       console.debug("[perf] queue:add", elapsed.toFixed(1), "ms")
@@ -392,14 +399,16 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       }
       await playQueueItem(first.id)
       for (let i = 1; i < queue.length; i++) {
-        const item = queue[i]
-        resolveQueueItemInBackground({ id: item.id, sourceUrl: item.sourceUrl })
+        backgroundResolveIfNeeded(queue[i])
       }
       return emitQueue()
     }
+    const existingIds = new Set(deps.queue.list().map((q) => q.id))
     const queue = deps.queue.addMany(mappedUrls)
     for (const item of queue) {
-      resolveQueueItemInBackground({ id: item.id, sourceUrl: item.sourceUrl })
+      if (!existingIds.has(item.id)) {
+        backgroundResolveIfNeeded(item)
+      }
     }
     return maybeStartFirstQueuedItem()
   })
