@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, lt, sql } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
-import { shuffle } from "lodash-es"
 import { z } from "zod"
 import type {
   AppSettings,
@@ -1698,5 +1697,16 @@ function reorderItems<T>(items: T[], from: number, to: number): T[] {
   const result = [...items]
   const [moved] = result.splice(from, 1)
   result.splice(to, 0, moved)
+  return result
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const result = [...items]
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const current = result[i]
+    result[i] = result[j]
+    result[j] = current
+  }
   return result
 }

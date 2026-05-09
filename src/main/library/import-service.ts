@@ -1,4 +1,3 @@
-import { uniqBy } from "lodash-es"
 import type { SpotifyUrlInfo } from "spotify-url-info"
 import * as spotifyUrlInfoModule from "spotify-url-info"
 import { z } from "zod"
@@ -162,7 +161,7 @@ export class ImportService {
       url,
       importMax
     )
-    const list = uniqBy(playlist.tracks, "sourceUrl")
+    const list = uniqBy(playlist.tracks, (track) => track.sourceUrl)
     const targetPlaylistId =
       job.targetPlaylistId ?? this.library.createPlaylistRecord(playlist.title).id
     const j = this.update(job, {
@@ -247,7 +246,7 @@ export class ImportService {
     if (!plId) throw new Error("Import target playlist was not set.")
     await this.saveCandidates(
       j,
-      uniqBy(candidates, "sourceUrl"),
+      uniqBy(candidates, (candidate) => candidate.sourceUrl),
       plId,
       j.playlistTitle ?? undefined
     )
@@ -285,4 +284,16 @@ export class ImportService {
       playlistTitle: playlistTitle ?? j.playlistTitle,
     })
   }
+}
+
+function uniqBy<T>(items: T[], keyFor: (item: T) => string): T[] {
+  const seen = new Set<string>()
+  const result: T[] = []
+  for (const item of items) {
+    const key = keyFor(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(item)
+  }
+  return result
 }

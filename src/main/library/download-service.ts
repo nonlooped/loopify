@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { basename, join } from "node:path"
 import { app } from "electron"
+import { execa } from "execa"
 import pLimit from "p-limit"
 import type { Playlist, Track, TrackCandidate } from "../../shared/types/music"
 import type { LibraryRepository, SettingsRepository } from "../db/repositories"
@@ -83,62 +83,53 @@ export class DownloadService {
     }
   }
 
-  private runYtdlp(track: Track): Promise<string> {
+  private async runYtdlp(track: Track): Promise<string> {
     const outputTemplate = join(this.downloadsDir, `${track.id}.%(ext)s`)
     const settings = this.settings.get()
     const sourceUrl = this.library.findDownloadSourceUrlForTrack(track.id) ?? track.canonicalUrl
+    const args = [
+      "--newline",
+      "--no-playlist",
+      "--no-warnings",
+      "--format",
+      "bestaudio/best",
+      "--output",
+      outputTemplate,
+      sourceUrl,
+    ]
 
-    return new Promise((resolve, reject) => {
-      const child = spawn(
-        settings.ytdlpPath,
-        [
-          "--newline",
-          "--no-playlist",
-          "--no-warnings",
-          "--format",
-          "bestaudio/best",
-          "--output",
-          outputTemplate,
-          sourceUrl,
-        ],
-        { stdio: ["ignore", "pipe", "pipe"] }
-      )
-      let stderr = ""
-
-      child.stdout.setEncoding("utf8")
-      child.stderr.setEncoding("utf8")
-      child.stdout.on("data", (chunk) => {
+    try {
+      const subprocess = execa(settings.ytdlpPath, args, {
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      subprocess.stdout?.setEncoding("utf8")
+      subprocess.stderr?.setEncoding("utf8")
+      subprocess.stdout?.on("data", (chunk) => {
         this.handleProgress(track.id, String(chunk))
       })
-      child.stderr.on("data", (chunk) => {
-        const text = String(chunk)
-        stderr += text
-        this.handleProgress(track.id, text)
+      subprocess.stderr?.on("data", (chunk) => {
+        this.handleProgress(track.id, String(chunk))
       })
-      child.on("error", (error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") {
-          reject(
-            new Error(
-              `Could not find yt-dlp at "${settings.ytdlpPath}". Update the path in Settings.`
-            )
-          )
-          return
-        }
-        reject(error)
-      })
-      child.on("close", (code) => {
-        if (code !== 0) {
-          reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}.`))
-          return
-        }
-        const filePath = this.findDownloadedFile(track.id)
-        if (!filePath) {
-          reject(new Error("Download completed, but the local file could not be found."))
-          return
-        }
-        resolve(filePath)
-      })
-    })
+      await subprocess
+    } catch (error) {
+      if (isErrnoException(error) && error.code === "ENOENT") {
+        throw new Error(
+          `Could not find yt-dlp at "${settings.ytdlpPath}". Update the path in Settings.`
+        )
+      }
+      if (isExecaError(error) && error.failed) {
+        throw new Error(error.stderr.trim() || `yt-dlp exited with code ${error.exitCode}.`)
+      }
+      throw error
+    }
+
+    const filePath = this.findDownloadedFile(track.id)
+    if (!filePath) {
+      throw new Error("Download completed, but the local file could not be found.")
+    }
+    return filePath
   }
 
   private handleProgress(trackId: string, text: string): void {
@@ -163,4 +154,16 @@ export class DownloadService {
     this.events.onTrackChanged(track)
     return track
   }
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error
+}
+
+function isExecaError(error: unknown): error is Error & {
+  exitCode?: number
+  failed?: boolean
+  stderr: string
+} {
+  return error instanceof Error && "stderr" in error
 }

@@ -1,5 +1,4 @@
-import { spawn } from "node:child_process"
-import ms from "ms"
+import { execa } from "execa"
 import pLimit from "p-limit"
 import type {
   AlbumDetails,
@@ -364,68 +363,55 @@ export class ResolverService {
     }
   }
 
-  private runYtdlp(args: string[], timeoutMs: number): Promise<YtdlpEntry> {
+  private async runYtdlp(args: string[], timeoutMs: number): Promise<YtdlpEntry> {
     const settings = this.settings.get()
     const ytdlpPath = resolveYtdlpPath(settings.ytdlpPath)
-    return new Promise((resolve, reject) => {
-      const startedAt = performance.now()
-      const logElapsed = (outcome: string): void => {
-        const ms = performance.now() - startedAt
-        const preview =
-          args.length <= 4 ? args.join(" ") : `${args.slice(0, 3).join(" ")} …(+${args.length - 3})`
-        console.debug("[perf] resolver:yt-dlp", ms.toFixed(0), "ms", outcome, preview)
-      }
-      const child = spawn(ytdlpPath, args, { stdio: ["ignore", "pipe", "pipe"] })
-      let stdout = ""
-      let stderr = ""
-      const timeout = setTimeout(() => {
-        logElapsed("timeout")
-        child.kill("SIGTERM")
-        reject(new Error(`Resolver timed out after ${timeoutMs}ms.`))
-      }, timeoutMs)
+    const startedAt = performance.now()
+    const logElapsed = (outcome: string): void => {
+      const elapsedMs = performance.now() - startedAt
+      const preview =
+        args.length <= 4 ? args.join(" ") : `${args.slice(0, 3).join(" ")} …(+${args.length - 3})`
+      console.debug("[perf] resolver:yt-dlp", elapsedMs.toFixed(0), "ms", outcome, preview)
+    }
 
-      child.stdout.setEncoding("utf8")
-      child.stderr.setEncoding("utf8")
-      child.stdout.on("data", (chunk: string) => {
-        stdout += chunk
+    try {
+      const result = await execa(ytdlpPath, args, {
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: timeoutMs,
       })
-      child.stderr.on("data", (chunk: string) => {
-        stderr += chunk
-      })
-      child.on("error", (error: NodeJS.ErrnoException) => {
-        clearTimeout(timeout)
+      try {
+        const parsed = JSON.parse(result.stdout) as YtdlpEntry
+        logElapsed("ok")
+        return parsed
+      } catch {
+        logElapsed("invalid-json")
+        throw new Error("yt-dlp returned invalid JSON.")
+      }
+    } catch (error) {
+      if (isExecaError(error) && error.timedOut) {
+        logElapsed("timeout")
+        throw new Error(`Resolver timed out after ${timeoutMs}ms.`)
+      }
+      if (isErrnoException(error) && error.code === "ENOENT") {
         logElapsed("spawn-error")
-        if (error.code === "ENOENT") {
-          reject(new Error(`Could not find yt-dlp at "${ytdlpPath}". Update the path in Settings.`))
-          return
-        }
-        reject(error)
-      })
-      child.on("close", (code: number | null) => {
-        clearTimeout(timeout)
-        if (code !== 0) {
-          logElapsed(`exit-${code ?? "null"}`)
-          reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}.`))
-          return
-        }
-        try {
-          const parsed = JSON.parse(stdout) as YtdlpEntry
-          logElapsed("ok")
-          resolve(parsed)
-        } catch {
-          logElapsed("invalid-json")
-          reject(new Error("yt-dlp returned invalid JSON."))
-        }
-      })
-    })
+        throw new Error(`Could not find yt-dlp at "${ytdlpPath}". Update the path in Settings.`)
+      }
+      if (isExecaError(error) && error.failed) {
+        logElapsed(`exit-${error.exitCode ?? "null"}`)
+        throw new Error(error.stderr.trim() || `yt-dlp exited with code ${error.exitCode}.`)
+      }
+      throw error
+    }
   }
 
   private metadataExpiresAt(): number {
-    return Date.now() + ms(`${this.settings.get().cacheTtlHours}h`)
+    return Date.now() + hoursToMs(this.settings.get().cacheTtlHours)
   }
 
   private streamExpiresAt(streamUrl: string | null): number {
-    const configured = Date.now() + ms(`${this.settings.get().streamCacheTtlMinutes}m`)
+    const configured = Date.now() + minutesToMs(this.settings.get().streamCacheTtlMinutes)
     if (!streamUrl) return configured
     const fromUrl = parseStreamExpiryMs(streamUrl)
     if (fromUrl === null) return configured
@@ -480,6 +466,27 @@ function extractYoutubeId(value: string): string | null {
 
 function catalogCacheKey(track: CatalogTrack): string {
   return `catalog:${track.catalogProvider}:${track.catalogId}`
+}
+
+function hoursToMs(hours: number): number {
+  return hours * 60 * 60 * 1000
+}
+
+function minutesToMs(minutes: number): number {
+  return minutes * 60 * 1000
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error
+}
+
+function isExecaError(error: unknown): error is Error & {
+  exitCode?: number
+  failed?: boolean
+  stderr: string
+  timedOut?: boolean
+} {
+  return error instanceof Error && "stderr" in error
 }
 
 function parseStreamExpiryMs(streamUrl: string): number | null {
