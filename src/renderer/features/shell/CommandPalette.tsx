@@ -1,17 +1,19 @@
 import FocusTrap from "focus-trap-react"
 import { Download, ExternalLink, Heart, Loader2, Play, Plus, Search, X } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import type { CatalogSearchResult, CatalogTrack, TrackCandidate } from "src/shared/types/music"
+import type { CatalogSearchResult } from "src/shared/types/music"
 import { useDebouncedCallback } from "use-debounce"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
+import { useResolver } from "@/hooks/useResolver"
 import { cn } from "@/lib/cn"
 import {
   buildAlbumContextMenu,
   buildArtistContextMenu,
   buildCatalogTrackContextMenu,
 } from "@/lib/context-menu-items"
+import { formatTrackDuration } from "@/lib/music-format"
 import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
 
@@ -34,7 +36,7 @@ export function CommandPalette() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const { resolvingId, resolve } = useResolver()
   const [activeTab, setActiveTab] = useState<SearchTab>("all")
   const backdropRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,7 +52,6 @@ export function CommandPalette() {
     setActiveIndex(-1)
     setIsLoading(false)
     setError(null)
-    setResolvingId(null)
     setActiveTab("all")
   }, [shouldRender])
 
@@ -116,25 +117,6 @@ export function CommandPalette() {
     void performSearch(value)
   }, 350)
 
-  const withResolution = useCallback(
-    async (catalog: CatalogTrack, action: (candidate: TrackCandidate) => void) => {
-      const id = `track:${catalog.catalogId}`
-      setResolvingId(id)
-      try {
-        const candidate = await window.loopify.resolver.resolveCatalog(catalog)
-        action(candidate)
-      } catch (err) {
-        console.error("Source resolution failed:", err)
-        setError(
-          err instanceof Error ? err.message : "Could not find an audio source for this track."
-        )
-      } finally {
-        setResolvingId(null)
-      }
-    },
-    []
-  )
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setQuery(value)
@@ -189,24 +171,16 @@ export function CommandPalette() {
     const mod = e.metaKey || e.ctrlKey
     if (mod) {
       e.preventDefault()
-      void withResolution(track, (c) => {
-        useAppStore.getState().handleEnqueueTrack(c)
+      void resolve(track).then((c) => {
+        if (c) useAppStore.getState().handleEnqueueTrack(c)
       })
       return
     }
     e.preventDefault()
-    void withResolution(track, (c) => {
-      useAppStore.getState().handlePlayTrack(c)
+    void resolve(track).then((c) => {
+      if (c) useAppStore.getState().handlePlayTrack(c)
       useAppStore.getState().toggleSearch(false)
     })
-  }
-
-  const formatDuration = (ms: number | null) => {
-    if (!ms) return "--:--"
-    const totalSeconds = Math.floor(ms / 1000)
-    const m = Math.floor(totalSeconds / 60)
-    const s = totalSeconds % 60
-    return `${m}:${s.toString().padStart(2, "0")}`
   }
 
   if (!shouldRender) return null
@@ -375,7 +349,7 @@ export function CommandPalette() {
                       <div className="flex items-center gap-2">
                         <span className="type-meta truncate text-muted">{hit.artist}</span>
                         <span className="type-meta tabular-nums text-subtle">
-                          {formatDuration(hit.durationMs)}
+                          {formatTrackDuration(hit.durationMs)}
                         </span>
                       </div>
                     </div>
@@ -388,9 +362,11 @@ export function CommandPalette() {
                             type="button"
                             disabled={!!resolvingId}
                             onClick={() =>
-                              void withResolution(hit, (c) => {
-                                useAppStore.getState().handlePlayTrack(c)
-                                useAppStore.getState().toggleSearch(false)
+                              void resolve(hit).then((c) => {
+                                if (c) {
+                                  useAppStore.getState().handlePlayTrack(c)
+                                  useAppStore.getState().toggleSearch(false)
+                                }
                               })
                             }
                             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-accent text-on-accent hover:scale-105 active:scale-95 transition-transform duration-press ease-out-quart motion-reduce:hover:scale-100 motion-reduce:active:scale-100 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -403,9 +379,9 @@ export function CommandPalette() {
                             type="button"
                             disabled={!!resolvingId}
                             onClick={() =>
-                              void withResolution(hit, (c) =>
-                                useAppStore.getState().handleEnqueueTrack(c)
-                              )
+                              void resolve(hit).then((c) => {
+                                if (c) useAppStore.getState().handleEnqueueTrack(c)
+                              })
                             }
                             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
                             title="Add to queue"
@@ -417,9 +393,9 @@ export function CommandPalette() {
                             type="button"
                             disabled={!!resolvingId}
                             onClick={() =>
-                              void withResolution(hit, (c) =>
-                                useAppStore.getState().handleLikeCandidate(c)
-                              )
+                              void resolve(hit).then((c) => {
+                                if (c) useAppStore.getState().handleLikeCandidate(c)
+                              })
                             }
                             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
                             title="Like song"
@@ -431,9 +407,54 @@ export function CommandPalette() {
                             type="button"
                             disabled={!!resolvingId}
                             onClick={() =>
-                              void withResolution(hit, (c) =>
-                                useAppStore.getState().handleDownloadCandidate(c)
-                              )
+                              void resolve(hit).then((c) => {
+                                if (c) {
+                                  useAppStore.getState().handlePlayTrack(c)
+                                  useAppStore.getState().toggleSearch(false)
+                                }
+                              })
+                            }
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-accent text-on-accent hover:scale-105 active:scale-95 transition-transform duration-press ease-out-quart motion-reduce:hover:scale-100 motion-reduce:active:scale-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Play now"
+                            aria-label={`Play ${hit.title}`}
+                          >
+                            <Play className="h-4 w-4 fill-current ml-0.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!resolvingId}
+                            onClick={() =>
+                              void resolve(hit).then((c) => {
+                                if (c) useAppStore.getState().handleEnqueueTrack(c)
+                              })
+                            }
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Add to queue"
+                            aria-label={`Add ${hit.title} to queue`}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!resolvingId}
+                            onClick={() =>
+                              void resolve(hit).then((c) => {
+                                if (c) useAppStore.getState().handleLikeCandidate(c)
+                              })
+                            }
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Like song"
+                            aria-label={`Like ${hit.title}`}
+                          >
+                            <Heart className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!resolvingId}
+                            onClick={() =>
+                              void resolve(hit).then((c) => {
+                                if (c) useAppStore.getState().handleDownloadCandidate(c)
+                              })
                             }
                             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors duration-ui ease-out-quart disabled:opacity-40 disabled:cursor-not-allowed"
                             title="Download for offline playback"

@@ -1,36 +1,21 @@
 import { Download, Heart, Loader2, Play, Plus } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
-import type { AlbumDetails, CatalogTrack, TrackCandidate } from "src/shared/types/music"
+import { useEffect, useState } from "react"
+import type { AlbumDetails } from "src/shared/types/music"
 import { Button } from "@/components/Button"
 import { EmptyState } from "@/components/EmptyState"
 import { IconButton } from "@/components/IconButton"
+import { useResolver } from "@/hooks/useResolver"
 import { buildCatalogTrackContextMenu } from "@/lib/context-menu-items"
 import { formatTrackDuration } from "@/lib/music-format"
+import { getBackLabel } from "@/lib/navigation"
 import { navigateFromArtist, navigateFromTrack } from "@/lib/track-nav"
-import type { LibraryView } from "@/stores/app.store"
 import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
-
-function getBackLabel(view: LibraryView | null): string {
-  if (!view) return "Back to Collection"
-  switch (view.kind) {
-    case "collection":
-      return "Back to Collection"
-    case "playlist":
-      return "Back to Playlist"
-    case "artist":
-      return "Back to Artist"
-    case "album":
-      return "Back to Album"
-    default:
-      return "Back to Collection"
-  }
-}
 
 export function AlbumPage({ deezerId }: { deezerId: number }) {
   const [data, setData] = useState<AlbumDetails | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const { resolvingId, resolve } = useResolver()
   const setLibraryView = useAppStore((s) => s.setLibraryView)
   const previousLibraryView = useAppStore((s) => s.previousLibraryView)
   const goBack = useAppStore((s) => s.goBack)
@@ -49,22 +34,6 @@ export function AlbumPage({ deezerId }: { deezerId: number }) {
       cancelled = true
     }
   }, [deezerId])
-
-  const withResolution = useCallback(
-    async (catalog: CatalogTrack, action: (candidate: TrackCandidate) => void) => {
-      const id = `track:${catalog.catalogId}`
-      setResolvingId(id)
-      try {
-        const candidate = await window.loopify.resolver.resolveCatalog(catalog)
-        action(candidate)
-      } catch (err) {
-        console.error("Source resolution failed:", err)
-      } finally {
-        setResolvingId(null)
-      }
-    },
-    []
-  )
 
   if (error) {
     return (
@@ -99,16 +68,18 @@ export function AlbumPage({ deezerId }: { deezerId: number }) {
   const { album, tracks } = data
 
   const playAll = () => {
-    // Limit concurrent resolutions to avoid overwhelming yt-dlp
     const limit = 4
     const toResolve = tracks.slice(0, 50)
     let i = 0
     const next = () => {
       if (i >= toResolve.length) return
       const track = toResolve[i++]
-      void withResolution(track, (c) => useAppStore.getState().handleEnqueueTrack(c)).finally(next)
+      void resolve(track)
+        .then((c) => {
+          if (c) useAppStore.getState().handleEnqueueTrack(c)
+        })
+        .finally(next)
     }
-    // Start 'limit' concurrent workers
     for (let n = 0; n < Math.min(limit, toResolve.length); n++) next()
   }
 
@@ -205,9 +176,9 @@ export function AlbumPage({ deezerId }: { deezerId: number }) {
                         <button
                           type="button"
                           onClick={() =>
-                            void withResolution(track, (c) =>
-                              useAppStore.getState().handlePlayTrack(c)
-                            )
+                            void resolve(track).then((c) => {
+                              if (c) useAppStore.getState().handlePlayTrack(c)
+                            })
                           }
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-accent text-on-accent transition-[colors,transform] duration-ui ease-out-quart hover:bg-accent-bright active:scale-[0.95] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:active:scale-100"
                           aria-label={`Play ${track.title}`}
@@ -220,9 +191,9 @@ export function AlbumPage({ deezerId }: { deezerId: number }) {
                           title={`Add ${track.title} to queue`}
                           aria-label={`Add ${track.title} to queue`}
                           onClick={() =>
-                            void withResolution(track, (c) =>
-                              useAppStore.getState().handleEnqueueTrack(c)
-                            )
+                            void resolve(track).then((c) => {
+                              if (c) useAppStore.getState().handleEnqueueTrack(c)
+                            })
                           }
                         >
                           <Plus className="h-3 w-3" />
@@ -233,9 +204,9 @@ export function AlbumPage({ deezerId }: { deezerId: number }) {
                           title={`Like ${track.title}`}
                           aria-label={`Like ${track.title}`}
                           onClick={() =>
-                            void withResolution(track, (c) =>
-                              useAppStore.getState().handleLikeCandidate(c)
-                            )
+                            void resolve(track).then((c) => {
+                              if (c) useAppStore.getState().handleLikeCandidate(c)
+                            })
                           }
                         >
                           <Heart className="h-3 w-3" />
@@ -246,9 +217,9 @@ export function AlbumPage({ deezerId }: { deezerId: number }) {
                           title={`Download ${track.title}`}
                           aria-label={`Download ${track.title}`}
                           onClick={() =>
-                            void withResolution(track, (c) =>
-                              useAppStore.getState().handleDownloadCandidate(c)
-                            )
+                            void resolve(track).then((c) => {
+                              if (c) useAppStore.getState().handleDownloadCandidate(c)
+                            })
                           }
                         >
                           <Download className="h-3 w-3" />

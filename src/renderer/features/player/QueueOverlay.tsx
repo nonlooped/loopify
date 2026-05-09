@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/EmptyState"
 import { IconButton } from "@/components/IconButton"
 import { cn } from "@/lib/cn"
 import { buildTrackContextMenu } from "@/lib/context-menu-items"
+import { isDownloadBusy } from "@/lib/download-utils"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut } from "@/lib/shortcut"
 import { navigateFromArtist, navigateFromTrack } from "@/lib/track-nav"
@@ -89,8 +90,7 @@ const SortableQueueItem = memo(function SortableQueueItem({
   const artist = item.track?.artist || "Unknown"
   const isLiked = Boolean(item.track?.likedAt)
   const isDownloaded = item.track?.downloadStatus === "downloaded"
-  const isDownloadBusy =
-    item.track?.downloadStatus === "queued" || item.track?.downloadStatus === "downloading"
+  const isDownloadBusyState = isDownloadBusy(item.track?.downloadStatus)
 
   return (
     <li
@@ -191,7 +191,7 @@ const SortableQueueItem = memo(function SortableQueueItem({
                   aria-label="Available offline"
                 />
               )}
-              {isDownloadBusy && (
+              {isDownloadBusyState && (
                 <span
                   className="h-3.5 w-3.5 shrink-0 animate-spin-slow rounded-full border border-accent/40 border-t-accent animate-in-sidebar-copy"
                   role="img"
@@ -233,7 +233,7 @@ const SortableQueueItem = memo(function SortableQueueItem({
                 aria-label={isDownloaded ? `Remove download for ${title}` : `Download ${title}`}
                 title={downloadTitle(item.track.downloadStatus, item.track.downloadProgress)}
                 active={isDownloaded}
-                disabled={isDownloadBusy}
+                disabled={isDownloadBusyState}
                 className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
               >
                 {isDownloaded ? (

@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/EmptyState"
 import { IconButton } from "@/components/IconButton"
 import { cn } from "@/lib/cn"
 import { buildPlaylistContextMenu, buildTrackContextMenu } from "@/lib/context-menu-items"
+import { isDownloadBusy } from "@/lib/download-utils"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
 import { downloadTitle, formatPlaylistMeta, formatTrackDuration } from "@/lib/music-format"
 import { formatModShortcut, searchShortcutProse } from "@/lib/shortcut"
@@ -695,9 +696,7 @@ function PlaylistDownloadButton({
 }) {
   const tracks = playlist.tracks ?? []
   const downloadable = tracks.filter((track) => track.downloadStatus !== "downloaded")
-  const downloading = tracks.filter(
-    (track) => track.downloadStatus === "queued" || track.downloadStatus === "downloading"
-  )
+  const downloading = tracks.filter((track) => isDownloadBusy(track.downloadStatus))
   const downloaded = tracks.length > 0 && downloadable.length === 0
   const progress =
     downloading.length > 0
@@ -1016,7 +1015,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
   const durationLabel = useMemo(() => formatTrackDuration(track.durationMs), [track.durationMs])
   const isLiked = Boolean(track.likedAt)
   const isDownloaded = track.downloadStatus === "downloaded"
-  const isDownloadBusy = track.downloadStatus === "queued" || track.downloadStatus === "downloading"
+  const isDownloadBusyState = isDownloadBusy(track.downloadStatus)
 
   const handleRowKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -1146,7 +1145,7 @@ const PlaylistTrackRow = memo(function PlaylistTrackRow({
               size="sm"
               title={downloadTitle(track.downloadStatus, track.downloadProgress)}
               active={isDownloaded}
-              disabled={isDownloadBusy}
+              disabled={isDownloadBusyState}
               onClick={(e) => {
                 e.stopPropagation()
                 if (isDownloaded) onRemoveDownload()

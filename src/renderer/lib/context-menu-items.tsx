@@ -20,6 +20,7 @@ import {
   type Playlist,
   type Track,
 } from "src/shared/types/music"
+import { isDownloadBusy } from "@/lib/download-utils"
 import { useAppStore } from "@/stores/app.store"
 import type { ContextMenuItem } from "@/stores/context-menu.store"
 
@@ -58,7 +59,7 @@ export function buildTrackContextMenu(opts: TrackContextMenuOptions): ContextMen
   } = opts
   const isLiked = Boolean(track.likedAt)
   const isDownloaded = track.downloadStatus === "downloaded"
-  const isDownloadBusy = track.downloadStatus === "queued" || track.downloadStatus === "downloading"
+  const isDownloadBusyState = isDownloadBusy(track.downloadStatus)
 
   const items: ContextMenuItem[] = []
 
@@ -132,7 +133,7 @@ export function buildTrackContextMenu(opts: TrackContextMenuOptions): ContextMen
       type: "item",
       label: "Download",
       icon: <Download className="h-4 w-4" />,
-      disabled: isDownloadBusy,
+      disabled: isDownloadBusyState,
       onSelect: () => store.handleDownloadTrack(track),
     })
   }

@@ -5,6 +5,7 @@ import { useLyricsAutoScroll } from "@/hooks/useLyricsAutoScroll"
 import { useActiveLyricIndex, useLyricsData } from "@/hooks/useLyricsData"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
+import { formatSeconds } from "@/lib/format-time"
 
 type SyncedLyricsViewProps = {
   track: PlayerTrack | null
@@ -70,7 +71,7 @@ export function SyncedLyricsView({ track, positionSeconds, onSeek }: SyncedLyric
                   ? "translate-x-1 bg-white/[0.06] text-foreground opacity-100"
                   : "text-muted/72 opacity-70 hover:bg-white/[0.035] hover:text-muted hover:opacity-95 motion-reduce:translate-x-0"
               )}
-              title={`Seek to ${formatLyricTime(line.timeSeconds)}`}
+              title={`Seek to ${formatSeconds(line.timeSeconds)}`}
             >
               {line.text}
             </button>
@@ -128,10 +129,4 @@ function StaticLyricsView({ text }: { text: string | null }) {
       </div>
     </section>
   )
-}
-
-function formatLyricTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60)
-  const rest = Math.floor(seconds % 60)
-  return `${minutes}:${rest.toString().padStart(2, "0")}`
 }

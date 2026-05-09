@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/Button"
 import { ModalFrame } from "@/components/ModalFrame"
 import { TextField } from "@/components/TextField"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { useAppStore } from "@/stores/app.store"
 
@@ -36,28 +37,7 @@ export function PlaylistActionModal() {
     setRenderState(null)
   }, [shouldRender])
 
-  // Global ESC handler
-  useEffect(() => {
-    if (!state) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        onDismiss()
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [state, onDismiss])
-
-  // Backdrop click handler
-  useEffect(() => {
-    if (!state) return
-    const handleClick = (e: MouseEvent) => {
-      if (e.target === backdropRef.current) onDismiss()
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [state, onDismiss])
+  useModalDismiss(state != null, onDismiss, backdropRef)
 
   if (!shouldRender || !renderState) return null
 

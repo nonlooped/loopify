@@ -5,7 +5,6 @@ import type {
   UpdateStatus,
 } from "src/shared/contracts/ipc"
 import {
-  type CatalogSearchResult,
   isSystemPlaylistId,
   LIKED_SONGS_PLAYLIST_ID,
   OFFLINE_SONGS_PLAYLIST_ID,
@@ -28,8 +27,6 @@ export type LibraryView =
   | { kind: "playlist"; id: string }
   | { kind: "artist"; deezerId: number }
   | { kind: "album"; deezerId: number }
-
-type SearchTab = "all" | "tracks" | "artists" | "albums"
 
 type BootPhase = "loading" | "ready" | "error"
 
@@ -181,11 +178,6 @@ interface AppState {
   previousLibraryView: LibraryView | null
 
   isSearchOpen: boolean
-  searchQuery: string
-  searchTab: SearchTab
-  searchResults: CatalogSearchResult[]
-  searchLoading: boolean
-  searchError: string | null
 
   isSettingsOpen: boolean
   isImportOpen: boolean
@@ -213,7 +205,7 @@ interface AppState {
   refreshPlaylists: () => Promise<Playlist[]>
   refreshPlaylistsMetadata: () => Promise<Playlist[]>
   refreshRecommendations: () => Promise<void>
-  trackRecommendationImpression: (trackId: string, position: number) => Promise<void>
+
   trackRecommendationInteraction: (
     trackId: string,
     type: "play" | "skip" | "like" | "save" | "dismiss",
@@ -223,10 +215,6 @@ interface AppState {
   setLibraryView: (view: LibraryView) => void
   selectPlaylistWithTransition: (id: string | null) => void
   goBack: () => void
-
-  performSearch: (query: string) => Promise<void>
-  setSearchTab: (tab: SearchTab) => void
-  clearSearch: () => void
 
   handlePlayPause: () => Promise<void>
   handleCycleRepeat: () => Promise<void>
@@ -309,11 +297,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
   previousLibraryView: null,
 
   isSearchOpen: false,
-  searchQuery: "",
-  searchTab: "all" as SearchTab,
-  searchResults: [],
-  searchLoading: false,
-  searchError: null,
 
   isSettingsOpen: false,
   isImportOpen: false,
@@ -496,12 +479,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ homeRecommendations, recommendationMetrics })
   },
 
-  trackRecommendationImpression: async (trackId, position) => {
-    const sessionId = get().homeRecommendations?.sessionId
-    if (!sessionId) return
-    await window.loopify.recommendations.trackImpression({ sessionId, trackId, position })
-  },
-
   trackRecommendationInteraction: async (trackId, type, metadata) => {
     const sessionId = get().homeRecommendations?.sessionId
     if (!sessionId) return
@@ -551,40 +528,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
       if (root.dataset.playlistNav === direction) {
         delete root.dataset.playlistNav
       }
-    })
-  },
-
-  performSearch: async (query: string) => {
-    const trimmed = query.trim()
-    if (!trimmed) {
-      set({ searchResults: [], searchLoading: false, searchError: null, searchQuery: trimmed })
-      return
-    }
-    set({ searchLoading: true, searchError: null, searchQuery: trimmed })
-    try {
-      const results = await window.loopify.search.query({ text: trimmed })
-      set({ searchResults: results, searchLoading: false })
-    } catch (err) {
-      console.error("Search failed:", err)
-      set({
-        searchResults: [],
-        searchLoading: false,
-        searchError: err instanceof Error ? err.message : "Search failed",
-      })
-    }
-  },
-
-  setSearchTab: (tab: SearchTab) => {
-    set({ searchTab: tab })
-  },
-
-  clearSearch: () => {
-    set({
-      searchQuery: "",
-      searchResults: [],
-      searchLoading: false,
-      searchError: null,
-      searchTab: "all",
     })
   },
 

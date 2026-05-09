@@ -1,3 +1,4 @@
+import FocusTrap from "focus-trap-react"
 import {
   Captions,
   CheckCircle2,
@@ -19,10 +20,11 @@ import { createPortal } from "react-dom"
 import type { Track } from "src/shared/types/music"
 import { IconButton } from "@/components/IconButton"
 import { Slider } from "@/components/Slider"
-import { useFocusTrap } from "@/hooks/useFocusTrap"
 import { cn } from "@/lib/cn"
 import { buildTrackContextMenu } from "@/lib/context-menu-items"
+import { isDownloadBusy } from "@/lib/download-utils"
 import { DRAG_MIME_TYPES } from "@/lib/drag-drop"
+import { formatSeconds } from "@/lib/format-time"
 import { modArrowHint, playPauseHint } from "@/lib/keyboard-shortcuts"
 import { downloadTitle } from "@/lib/music-format"
 import { formatModShortcut, isMacLike } from "@/lib/shortcut"
@@ -58,8 +60,6 @@ export function FloatingIsland() {
   const repeatMode = playerState?.repeatMode ?? "off"
   const [isExpanded, setIsExpanded] = useState(false)
   const [expandedMode, setExpandedMode] = useState<"artwork" | "lyrics">("artwork")
-  const { containerRef: expandedPanelRef, handleKeyDown: onExpandedKeyDown } =
-    useFocusTrap(isExpanded)
 
   const isPlaying = playerState?.status === "playing"
   const title = playerState?.title || "Not Playing"
@@ -70,13 +70,7 @@ export function FloatingIsland() {
   const isLiked = Boolean(currentTrack?.likedAt)
   const downloadStatus = currentTrack?.downloadStatus ?? "not-downloaded"
   const downloadProgress = currentTrack?.downloadProgress ?? 0
-  const isDownloadBusy = downloadStatus === "queued" || downloadStatus === "downloading"
-
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60)
-    const s = Math.floor(secs % 60)
-    return `${m}:${s.toString().padStart(2, "0")}`
-  }
+  const isDownloadBusyState = isDownloadBusy(downloadStatus)
 
   const trackKey = playerState?.queueItemId
     ? `${playerState.queueItemId}-${title}`
@@ -130,221 +124,223 @@ export function FloatingIsland() {
           />
 
           <div className="pointer-events-none absolute inset-x-3 inset-y-3 sm:inset-x-4 sm:inset-y-4 md:inset-y-5">
-            <div
-              ref={expandedPanelRef}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Now playing"
-              onKeyDown={onExpandedKeyDown}
-              className={cn(
-                "ol-now-playing-panel pointer-events-auto absolute inset-0 overflow-hidden rounded-[2rem] border border-border bg-surface shadow-island sm:rounded-[2.5rem]",
-                isExpanded ? "ol-open" : "pointer-events-none"
-              )}
-            >
-              <div className="relative flex h-full flex-col overflow-hidden px-4 pb-4 pt-4 sm:px-6 sm:pb-6 sm:pt-5 lg:px-8 lg:pb-8 lg:pt-6">
-                {currentArtwork ? (
-                  <>
-                    <img
-                      src={currentArtwork}
-                      alt=""
-                      className="pointer-events-none absolute inset-x-8 top-6 h-[min(34vh,20rem)] w-auto rounded-[2rem] object-cover opacity-18 blur-3xl sm:inset-x-12 sm:top-8 sm:h-[min(38vh,24rem)] lg:inset-x-16 lg:top-10 lg:h-[min(44vh,30rem)]"
-                    />
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,oklch(1_0_0/.08),transparent_54%)]" />
-                  </>
-                ) : null}
-
-                <div className="relative flex items-start justify-between gap-4">
-                  <p className="type-meta m-0 text-subtle">Now Playing</p>
-                  <div className="flex items-center gap-2">
-                    <IconButton
-                      size="md"
-                      onClick={() => {
-                        const t = currentTrack
-                        if (t) void handleToggleLikeTrack(t)
-                      }}
-                      title={isLiked ? "Unlike current song" : "Like current song"}
-                      active={isLiked}
-                      disabled={!currentTrack}
-                    >
-                      <Heart className={cn("h-5 w-5", isLiked && "fill-current")} />
-                    </IconButton>
-                    <IconButton
-                      size="md"
-                      onClick={downloadAction}
-                      title={downloadTitle(downloadStatus, downloadProgress)}
-                      active={downloadStatus === "downloaded"}
-                      disabled={!currentTrack || isDownloadBusy}
-                    >
-                      {downloadStatus === "downloaded" ? (
-                        <CheckCircle2 className="h-5 w-5" />
-                      ) : (
-                        <Download className="h-5 w-5" />
-                      )}
-                    </IconButton>
-                    <IconButton
-                      size="md"
-                      onClick={() =>
-                        setExpandedMode((mode) => (mode === "lyrics" ? "artwork" : "lyrics"))
-                      }
-                      title={expandedMode === "lyrics" ? "Show artwork" : "Show synced lyrics"}
-                      active={expandedMode === "lyrics"}
-                      disabled={!hasTrack}
-                    >
-                      <Captions className="h-5 w-5" />
-                    </IconButton>
-                    <IconButton
-                      size="md"
-                      onClick={() => setIsExpanded(false)}
-                      title="Collapse now playing"
-                    >
-                      <ChevronDown className="h-5 w-5" />
-                    </IconButton>
-                  </div>
-                </div>
-
-                <div
-                  className={cn(
-                    "relative flex min-h-0 flex-1 flex-col text-center",
-                    expandedMode === "lyrics" ? "justify-start" : "items-center justify-center"
-                  )}
-                >
-                  {expandedMode === "lyrics" ? (
-                    <SyncedLyricsView
-                      track={playerState?.track ?? null}
-                      positionSeconds={position}
-                      onSeek={handleSeek}
-                    />
-                  ) : (
+            <FocusTrap active={isExpanded}>
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Now playing"
+                className={cn(
+                  "ol-now-playing-panel pointer-events-auto absolute inset-0 overflow-hidden rounded-[2rem] border border-border bg-surface shadow-island sm:rounded-[2.5rem]",
+                  isExpanded ? "ol-open" : "pointer-events-none"
+                )}
+              >
+                <div className="relative flex h-full flex-col overflow-hidden px-4 pb-4 pt-4 sm:px-6 sm:pb-6 sm:pt-5 lg:px-8 lg:pb-8 lg:pt-6">
+                  {currentArtwork ? (
                     <>
-                      <div
-                        key={trackKey}
-                        className="now-playing-swap w-full max-w-[min(28vh,14rem)] sm:max-w-[min(30vh,18rem)] lg:max-w-[min(34vh,22rem)] xl:max-w-[min(36vh,24rem)]"
-                      >
-                        <div className="aspect-square overflow-hidden rounded-[1.75rem] bg-raised/85 shadow-[0_24px_60px_-24px_oklch(0_0_0/.65)]">
-                          {currentArtwork ? (
-                            <img
-                              src={currentArtwork}
-                              alt=""
-                              className="h-full w-full object-cover"
-                              decoding="async"
-                              fetchPriority="high"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,oklch(1_0_0/.04),transparent)]">
-                              <div className="h-14 w-14 rounded-full bg-border" />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex max-w-[36rem] flex-col items-center gap-1.5 sm:mt-6 sm:gap-2">
-                        <h2
-                          className="m-0 text-balance text-[clamp(1.625rem,3.6vw,2.4rem)] font-semibold tracking-[-0.035em] text-foreground"
-                          title={title}
-                        >
-                          {title}
-                        </h2>
-                        <p
-                          className="type-body-sm m-0 max-w-[28rem] truncate text-muted"
-                          title={currentArtist}
-                        >
-                          {currentArtist}
-                        </p>
-                      </div>
+                      <img
+                        src={currentArtwork}
+                        alt=""
+                        className="pointer-events-none absolute inset-x-8 top-6 h-[min(34vh,20rem)] w-auto rounded-[2rem] object-cover opacity-18 blur-3xl sm:inset-x-12 sm:top-8 sm:h-[min(38vh,24rem)] lg:inset-x-16 lg:top-10 lg:h-[min(44vh,30rem)]"
+                      />
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,oklch(1_0_0/.08),transparent_54%)]" />
                     </>
-                  )}
+                  ) : null}
 
-                  <div className="mt-4 flex w-full max-w-[44rem] min-w-0 items-center gap-2 self-center sm:mt-6 sm:gap-3">
-                    <span className="type-meta w-10 shrink-0 text-right tabular-nums text-subtle sm:text-[0.8125rem]">
-                      {formatTime(position)}
-                    </span>
-                    <Slider
-                      className="min-w-0 flex-1"
-                      max={duration || 100}
-                      value={position}
-                      onChange={(e) => handleSeek(Number(e.target.value))}
-                      disabled={!duration}
-                      title="Seek (arrows: ±5s, Shift+arrows: ±30s, Home/End, or drag)"
-                    />
-                    <span className="type-meta w-10 shrink-0 tabular-nums text-subtle sm:text-[0.8125rem]">
-                      {formatTime(duration)}
-                    </span>
+                  <div className="relative flex items-start justify-between gap-4">
+                    <p className="type-meta m-0 text-subtle">Now Playing</p>
+                    <div className="flex items-center gap-2">
+                      <IconButton
+                        size="md"
+                        onClick={() => {
+                          const t = currentTrack
+                          if (t) void handleToggleLikeTrack(t)
+                        }}
+                        title={isLiked ? "Unlike current song" : "Like current song"}
+                        active={isLiked}
+                        disabled={!currentTrack}
+                      >
+                        <Heart className={cn("h-5 w-5", isLiked && "fill-current")} />
+                      </IconButton>
+                      <IconButton
+                        size="md"
+                        onClick={downloadAction}
+                        title={downloadTitle(downloadStatus, downloadProgress)}
+                        active={downloadStatus === "downloaded"}
+                        disabled={!currentTrack || isDownloadBusyState}
+                      >
+                        {downloadStatus === "downloaded" ? (
+                          <CheckCircle2 className="h-5 w-5" />
+                        ) : (
+                          <Download className="h-5 w-5" />
+                        )}
+                      </IconButton>
+                      <IconButton
+                        size="md"
+                        onClick={() =>
+                          setExpandedMode((mode) => (mode === "lyrics" ? "artwork" : "lyrics"))
+                        }
+                        title={expandedMode === "lyrics" ? "Show artwork" : "Show synced lyrics"}
+                        active={expandedMode === "lyrics"}
+                        disabled={!hasTrack}
+                      >
+                        <Captions className="h-5 w-5" />
+                      </IconButton>
+                      <IconButton
+                        size="md"
+                        onClick={() => setIsExpanded(false)}
+                        title="Collapse now playing"
+                      >
+                        <ChevronDown className="h-5 w-5" />
+                      </IconButton>
+                    </div>
                   </div>
 
-                  <div className="mb-3 mt-4 flex items-center justify-center gap-3 sm:mb-5 sm:mt-6 sm:gap-4">
-                    <IconButton
-                      onClick={handlePrevious}
-                      disabled={!hasPrevious}
-                      title={`Previous track (${modArrowHint("left")})`}
-                      className="h-11 w-11 rounded-full bg-white/4 sm:h-12 sm:w-12"
-                    >
-                      <SkipBack className="h-5 w-5 fill-current sm:h-6 sm:w-6" />
-                    </IconButton>
-                    <button
-                      type="button"
-                      onClick={handlePlayPause}
-                      title={playPauseHint()}
-                      className="cursor-pointer flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-foreground text-canvas transition-transform duration-press ease-out-quart hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100 sm:h-16 sm:w-16 lg:h-18 lg:w-18"
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-6 w-6 fill-current sm:h-7 sm:w-7 lg:h-8 lg:w-8" />
-                      ) : (
-                        <Play className="ml-0.5 h-6 w-6 fill-current sm:ml-1 sm:h-7 sm:w-7 lg:h-8 lg:w-8" />
-                      )}
-                    </button>
-                    <IconButton
-                      onClick={handleNext}
-                      disabled={!hasNext}
-                      title={`Next track (${modArrowHint("right")})`}
-                      className="h-11 w-11 rounded-full bg-white/4 sm:h-12 sm:w-12"
-                    >
-                      <SkipForward className="h-5 w-5 fill-current sm:h-6 sm:w-6" />
-                    </IconButton>
-                  </div>
-                </div>
+                  <div
+                    className={cn(
+                      "relative flex min-h-0 flex-1 flex-col text-center",
+                      expandedMode === "lyrics" ? "justify-start" : "items-center justify-center"
+                    )}
+                  >
+                    {expandedMode === "lyrics" ? (
+                      <SyncedLyricsView
+                        track={playerState?.track ?? null}
+                        positionSeconds={position}
+                        onSeek={handleSeek}
+                      />
+                    ) : (
+                      <>
+                        <div
+                          key={trackKey}
+                          className="now-playing-swap w-full max-w-[min(28vh,14rem)] sm:max-w-[min(30vh,18rem)] lg:max-w-[min(34vh,22rem)] xl:max-w-[min(36vh,24rem)]"
+                        >
+                          <div className="aspect-square overflow-hidden rounded-[1.75rem] bg-raised/85 shadow-[0_24px_60px_-24px_oklch(0_0_0/.65)]">
+                            {currentArtwork ? (
+                              <img
+                                src={currentArtwork}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                decoding="async"
+                                fetchPriority="high"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,oklch(1_0_0/.04),transparent)]">
+                                <div className="h-14 w-14 rounded-full bg-border" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-                <div className="relative flex w-full justify-center border-t border-border pt-3 sm:pt-4">
-                  <div className="flex w-full max-w-[44rem] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="flex min-w-0 items-center gap-3 sm:w-44">
-                      <Volume2 className="h-4 w-4 shrink-0 text-muted" />
+                        <div className="mt-4 flex max-w-[36rem] flex-col items-center gap-1.5 sm:mt-6 sm:gap-2">
+                          <h2
+                            className="m-0 text-balance text-[clamp(1.625rem,3.6vw,2.4rem)] font-semibold tracking-[-0.035em] text-foreground"
+                            title={title}
+                          >
+                            {title}
+                          </h2>
+                          <p
+                            className="type-body-sm m-0 max-w-[28rem] truncate text-muted"
+                            title={currentArtist}
+                          >
+                            {currentArtist}
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="mt-4 flex w-full max-w-[44rem] min-w-0 items-center gap-2 self-center sm:mt-6 sm:gap-3">
+                      <span className="type-meta w-10 shrink-0 text-right tabular-nums text-subtle sm:text-[0.8125rem]">
+                        {formatSeconds(position)}
+                      </span>
                       <Slider
                         className="min-w-0 flex-1"
-                        max={100}
-                        value={volume}
-                        onChange={(e) => handleVolumeChange(Number(e.target.value))}
-                        title={isMacLike() ? "Volume (⌘↑ / ⌘↓)" : "Volume (Ctrl+Up / Ctrl+Down)"}
+                        max={duration || 100}
+                        value={position}
+                        onChange={(e) => handleSeek(Number(e.target.value))}
+                        disabled={!duration}
+                        title="Seek (arrows: ±5s, Shift+arrows: ±30s, Home/End, or drag)"
                       />
+                      <span className="type-meta w-10 shrink-0 tabular-nums text-subtle sm:text-[0.8125rem]">
+                        {formatSeconds(duration)}
+                      </span>
                     </div>
-                    <div className="flex items-center justify-center gap-2 sm:justify-end">
+
+                    <div className="mb-3 mt-4 flex items-center justify-center gap-3 sm:mb-5 sm:mt-6 sm:gap-4">
                       <IconButton
-                        size="md"
-                        title={repeatLabel}
-                        onClick={handleCycleRepeat}
-                        active={repeatMode !== "off"}
+                        onClick={handlePrevious}
+                        disabled={!hasPrevious}
+                        title={`Previous track (${modArrowHint("left")})`}
+                        className="h-11 w-11 rounded-full bg-white/4 sm:h-12 sm:w-12"
                       >
-                        <RepeatIcon className="h-5 w-5" />
+                        <SkipBack className="h-5 w-5 fill-current sm:h-6 sm:w-6" />
                       </IconButton>
+                      <button
+                        type="button"
+                        onClick={handlePlayPause}
+                        title={playPauseHint()}
+                        className="cursor-pointer flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-foreground text-canvas transition-transform duration-press ease-out-quart hover:scale-105 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100 sm:h-16 sm:w-16 lg:h-18 lg:w-18"
+                      >
+                        {isPlaying ? (
+                          <Pause className="h-6 w-6 fill-current sm:h-7 sm:w-7 lg:h-8 lg:w-8" />
+                        ) : (
+                          <Play className="ml-0.5 h-6 w-6 fill-current sm:ml-1 sm:h-7 sm:w-7 lg:h-8 lg:w-8" />
+                        )}
+                      </button>
                       <IconButton
-                        size="md"
-                        title={isMacLike() ? "Shuffle queue (⌘⇧H)" : "Shuffle queue (Ctrl+Shift+H)"}
-                        onClick={handleShuffleQueue}
-                        disabled={!canShuffleQueue}
+                        onClick={handleNext}
+                        disabled={!hasNext}
+                        title={`Next track (${modArrowHint("right")})`}
+                        className="h-11 w-11 rounded-full bg-white/4 sm:h-12 sm:w-12"
                       >
-                        <Shuffle className="h-5 w-5" />
+                        <SkipForward className="h-5 w-5 fill-current sm:h-6 sm:w-6" />
                       </IconButton>
-                      <IconButton
-                        size="md"
-                        title={`Up Next (${formatModShortcut("L")})`}
-                        onClick={() => toggleQueue()}
-                        active={isQueueOpen}
-                      >
-                        <ListMusic className="h-5 w-5" />
-                      </IconButton>
+                    </div>
+                  </div>
+
+                  <div className="relative flex w-full justify-center border-t border-border pt-3 sm:pt-4">
+                    <div className="flex w-full max-w-[44rem] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <div className="flex min-w-0 items-center gap-3 sm:w-44">
+                        <Volume2 className="h-4 w-4 shrink-0 text-muted" />
+                        <Slider
+                          className="min-w-0 flex-1"
+                          max={100}
+                          value={volume}
+                          onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                          title={isMacLike() ? "Volume (⌘↑ / ⌘↓)" : "Volume (Ctrl+Up / Ctrl+Down)"}
+                        />
+                      </div>
+                      <div className="flex items-center justify-center gap-2 sm:justify-end">
+                        <IconButton
+                          size="md"
+                          title={repeatLabel}
+                          onClick={handleCycleRepeat}
+                          active={repeatMode !== "off"}
+                        >
+                          <RepeatIcon className="h-5 w-5" />
+                        </IconButton>
+                        <IconButton
+                          size="md"
+                          title={
+                            isMacLike() ? "Shuffle queue (⌘⇧H)" : "Shuffle queue (Ctrl+Shift+H)"
+                          }
+                          onClick={handleShuffleQueue}
+                          disabled={!canShuffleQueue}
+                        >
+                          <Shuffle className="h-5 w-5" />
+                        </IconButton>
+                        <IconButton
+                          size="md"
+                          title={`Up Next (${formatModShortcut("L")})`}
+                          onClick={() => toggleQueue()}
+                          active={isQueueOpen}
+                        >
+                          <ListMusic className="h-5 w-5" />
+                        </IconButton>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </FocusTrap>
           </div>
         </div>,
         document.body
@@ -458,7 +454,7 @@ export function FloatingIsland() {
             </div>
             <div className="flex w-full min-w-0 items-center gap-2 sm:gap-3">
               <span className="type-meta w-9 shrink-0 text-right tabular-nums text-subtle sm:w-10">
-                {formatTime(position)}
+                {formatSeconds(position)}
               </span>
               <Slider
                 className="pointer-events-auto min-w-0 flex-1"
@@ -469,7 +465,7 @@ export function FloatingIsland() {
                 title="Seek (arrows: ±5s, Shift+arrows: ±30s, Home/End, or drag)"
               />
               <span className="type-meta w-9 shrink-0 tabular-nums text-subtle sm:w-10">
-                {formatTime(duration)}
+                {formatSeconds(duration)}
               </span>
             </div>
           </div>
@@ -503,7 +499,7 @@ export function FloatingIsland() {
                 onClick={downloadAction}
                 title={downloadTitle(downloadStatus, downloadProgress)}
                 active={downloadStatus === "downloaded"}
-                disabled={!currentTrack || isDownloadBusy}
+                disabled={!currentTrack || isDownloadBusyState}
               >
                 {downloadStatus === "downloaded" ? (
                   <CheckCircle2 className="h-5 w-5" />
