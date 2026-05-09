@@ -79,10 +79,16 @@
     },
     "files": [
       "out/**/*",
-      "package.json",
-      "drizzle/migrations/**/*"
+      "package.json"
     ],
     "extraResources": [
+      {
+        "from": "drizzle/migrations/",
+        "to": "drizzle/migrations",
+        "filter": [
+          "**/*"
+        ]
+      },
       {
         "from": "resources/binaries/",
         "to": "binaries",

@@ -61,6 +61,10 @@ skills-lock.json
 # Fallow
 .fallow/
 
+# Kilo
+.kilo/
+context.json
+
 # Logs
 logs/
 *.log

@@ -85,6 +85,14 @@ function getDatabasePaths() {
   }
 }
 
+function getBundledMigrationsDir(): string {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, "drizzle", "migrations")
+  }
+
+  return join(app.getAppPath(), "drizzle", "migrations")
+}
+
 function applyPragmas(db: DatabaseConnection): void {
   db.pragma("journal_mode = WAL")
   db.pragma("foreign_keys = ON")
@@ -122,7 +130,7 @@ export function createDatabase(): DatabaseConnection {
   const paths = getDatabasePaths()
   mkdirSync(paths.dataDir, { recursive: true })
 
-  const sourceMigrationsDir = join(app.getAppPath(), "drizzle", "migrations")
+  const sourceMigrationsDir = getBundledMigrationsDir()
   const bundledNames = listBundledMigrationFolderNames(sourceMigrationsDir)
 
   let db = new Database(paths.dbPath)
@@ -161,7 +169,7 @@ export function createDrizzleDatabase(db: DatabaseConnection) {
 
 function runMigrations(db: DatabaseConnection): void {
   const { copiedMigrationsDir } = getDatabasePaths()
-  const sourceMigrationsDir = join(app.getAppPath(), "drizzle", "migrations")
+  const sourceMigrationsDir = getBundledMigrationsDir()
 
   if (!hasMigrationFiles(sourceMigrationsDir)) {
     throw new Error(`Drizzle migrations were not found at ${sourceMigrationsDir}`)
