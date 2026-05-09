@@ -7,6 +7,7 @@ import type {
   CatalogSearchResult,
   CatalogTrack,
 } from "../../shared/types/music"
+import { durationSimilarity, tokenOverlapRatio } from "../../shared/utils/string"
 
 const BASE_URL = "https://api.deezer.com"
 const REQUEST_TIMEOUT_MS = 8_000
@@ -263,40 +264,13 @@ function matchScore(
   expectedDurationMs: number | null,
   hit: CatalogTrack
 ): number {
-  const titleOverlap = tokenOverlap(expectedTitle, hit.title)
+  const titleOverlap = tokenOverlapRatio(expectedTitle, hit.title)
   const artistOverlap =
-    expectedArtist && hit.artist ? tokenOverlap(expectedArtist, hit.artist) : 0.2
+    expectedArtist && hit.artist ? tokenOverlapRatio(expectedArtist, hit.artist) : 0.2
   let durationOverlap = 0.2
   if (expectedDurationMs && hit.durationMs) {
-    const delta = Math.abs(expectedDurationMs - hit.durationMs)
-    if (delta < 2000) durationOverlap = 1
-    else if (delta < 5000) durationOverlap = 0.85
-    else if (delta < 15000) durationOverlap = 0.5
-    else durationOverlap = 0.1
+    durationOverlap = durationSimilarity(expectedDurationMs / 1000, hit.durationMs / 1000)
+    if (durationOverlap === 0) durationOverlap = 0.1
   }
   return 0.55 * titleOverlap + 0.25 * artistOverlap + 0.2 * durationOverlap
-}
-
-function tokenOverlap(a: string, b: string): number {
-  const normA = normalize(a)
-  const normB = normalize(b)
-  if (!normA || !normB) return 0
-  if (normA === normB) return 1
-  if (normA.includes(normB) || normB.includes(normA)) return 0.9
-  const tokensA = normA.split(" ").filter(Boolean)
-  const tokensB = new Set(normB.split(" ").filter(Boolean))
-  if (tokensA.length === 0 || tokensB.size === 0) return 0
-  let hits = 0
-  for (const t of tokensA) {
-    if (tokensB.has(t)) hits += 1
-  }
-  return hits / Math.max(tokensA.length, tokensB.size)
-}
-
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[[\](){}'".,!?/\\|`~@#$%^&*+=:;<>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
 }

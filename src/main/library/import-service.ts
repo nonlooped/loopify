@@ -1,3 +1,4 @@
+import { uniqBy } from "lodash-es"
 import type { SpotifyUrlInfo } from "spotify-url-info"
 import * as spotifyUrlInfoModule from "spotify-url-info"
 import { z } from "zod"
@@ -7,6 +8,7 @@ import {
   isSystemPlaylistId,
   type TrackCandidate,
 } from "../../shared/types/music"
+import type { DeezerService } from "../catalog/deezer-service"
 import type { ImportRepository, LibraryRepository, SettingsRepository } from "../db/repositories"
 import type { PlaylistResolution, ResolverService } from "../resolver/resolver-service"
 import { detectImportSource } from "./playlist-source"
@@ -89,20 +91,12 @@ function normalizeDurationMs(v: unknown): number | undefined {
   return Math.floor(v)
 }
 
-function uniqueBySource<T extends { sourceUrl: string }>(candidates: T[]): T[] {
-  const seen = new Set<string>()
-  return candidates.filter((c) => {
-    if (seen.has(c.sourceUrl)) return false
-    seen.add(c.sourceUrl)
-    return true
-  })
-}
-
 export class ImportService {
   constructor(
     private readonly imports: ImportRepository,
     private readonly library: LibraryRepository,
     private readonly resolver: ResolverService,
+    private readonly deezer: DeezerService,
     private readonly settings: SettingsRepository,
     private readonly onJobUpdated: (job: ImportJob) => void = () => {}
   ) {}
@@ -168,7 +162,7 @@ export class ImportService {
       url,
       importMax
     )
-    const list = uniqueBySource(playlist.tracks)
+    const list = uniqBy(playlist.tracks, "sourceUrl")
     const targetPlaylistId =
       job.targetPlaylistId ?? this.library.createPlaylistRecord(playlist.title).id
     const j = this.update(job, {
@@ -222,6 +216,7 @@ export class ImportService {
     const throttle = Math.max(1, settings.importProgressThrottle)
     const candidates = await matchAllSpotifyRows(
       this.resolver,
+      this.deezer,
       limited,
       settings.importMatchConcurrency,
       settings.spotifyMatchScoreThreshold,
@@ -250,7 +245,12 @@ export class ImportService {
     })
     const plId = j.targetPlaylistId
     if (!plId) throw new Error("Import target playlist was not set.")
-    await this.saveCandidates(j, uniqueBySource(candidates), plId, j.playlistTitle ?? undefined)
+    await this.saveCandidates(
+      j,
+      uniqBy(candidates, "sourceUrl"),
+      plId,
+      j.playlistTitle ?? undefined
+    )
   }
 
   private async saveCandidates(

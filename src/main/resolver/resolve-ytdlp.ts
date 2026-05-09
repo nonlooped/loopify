@@ -1,12 +1,11 @@
-import { resolveBundledBinary } from "../shared/resolve-bundled-binary"
+import { resolveBinaryPath } from "../shared/resolve-binary"
 
-const YTDLP_BINARY_NAME = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp"
-
-export function resolveYtdlpPath(configuredPath: string): string {
-  const bundledPath = resolveBundledBinary("yt-dlp", YTDLP_BINARY_NAME)
-  if (bundledPath) {
-    return bundledPath
-  }
-
-  return configuredPath
+export function resolveYtdlpPath(settingsPath: string | undefined): string {
+  return (
+    resolveBinaryPath({
+      binaryDir: "yt-dlp/win-x64",
+      binaryName: "yt-dlp.exe",
+      configuredPath: settingsPath ?? "yt-dlp",
+    }) ?? "yt-dlp"
+  )
 }

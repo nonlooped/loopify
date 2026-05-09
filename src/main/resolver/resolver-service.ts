@@ -12,7 +12,7 @@ import type {
   ResolvedTrack,
   TrackCandidate,
 } from "../../shared/types/music"
-import { DeezerService } from "../catalog/deezer-service"
+import type { DeezerService } from "../catalog/deezer-service"
 import type { ResolverCacheRepository, SettingsRepository } from "../db/repositories"
 import { buildYtsearchArg } from "../music/query-builders"
 import { resolveYtdlpPath } from "./resolve-ytdlp"
@@ -28,7 +28,7 @@ export type PlaylistResolution = {
   sourceTrackCount: number
 }
 
-export const YT_FORMAT_PLAY = "bestaudio/best"
+const YT_FORMAT_PLAY = "bestaudio/best"
 
 type YtdlpEntry = {
   id?: string
@@ -46,15 +46,18 @@ type YtdlpEntry = {
 }
 
 export class ResolverService {
-  private readonly deezer = new DeezerService()
+  private readonly deezer: DeezerService
   private readonly inFlight = new Map<string, Promise<ResolvedTrack>>()
   private readonly inFlightStream = new Map<string, Promise<string | null>>()
   private readonly inFlightCatalog = new Map<string, Promise<TrackCandidate>>()
 
   constructor(
     private readonly settings: SettingsRepository,
-    private readonly cache: ResolverCacheRepository
-  ) {}
+    private readonly cache: ResolverCacheRepository,
+    deezer: DeezerService
+  ) {
+    this.deezer = deezer
+  }
 
   primeCandidate(candidate: TrackCandidate): void {
     this.cache.setResolved(candidate.sourceUrl, {
@@ -273,11 +276,6 @@ export class ResolverService {
       return this.toCandidate(result, result.webpage_url ?? result.url ?? sourceArg)
     }
     return null
-  }
-
-  async listPlaylist(inputUrl: string): Promise<TrackCandidate[]> {
-    return (await this.listPlaylistWithMetadata(inputUrl, this.settings.get().importMaxTracks))
-      .tracks
   }
 
   async listPlaylistWithMetadata(
