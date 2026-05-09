@@ -3,17 +3,20 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { basename, join } from "node:path"
 import { app } from "electron"
 import pLimit from "p-limit"
+import type { DownloadProgressPatch } from "../../shared/contracts/ipc"
 import type { Playlist, Track, TrackCandidate } from "../../shared/types/music"
 import type { LibraryRepository, SettingsRepository } from "../db/repositories"
 
 type DownloadEvents = {
   onTrackChanged: (track: Track) => void
+  onProgressChanged: (patch: DownloadProgressPatch) => void
 }
 
 const MAX_CONCURRENT_DOWNLOADS = 3
 
 export class DownloadService {
   private readonly inFlight = new Set<string>()
+  private readonly lastProgressTime = new Map<string, number>()
   private readonly downloadsDir = join(app.getPath("userData"), "downloads")
   private readonly limit = pLimit(MAX_CONCURRENT_DOWNLOADS)
 
@@ -78,6 +81,7 @@ export class DownloadService {
       this.emit(this.library.setDownloadFailed(track.id, message))
     } finally {
       this.inFlight.delete(track.id)
+      this.lastProgressTime.delete(track.id)
     }
   }
 
@@ -143,6 +147,12 @@ export class DownloadService {
     const match = /(\d+(?:\.\d+)?)%/.exec(text)
     if (!match) return
     const progress = Math.max(1, Math.min(99, Math.round(Number(match[1]))))
+    const now = Date.now()
+    const lastTime = this.lastProgressTime.get(trackId) ?? 0
+    if (now - lastTime < 1000) {
+      return
+    }
+    this.lastProgressTime.set(trackId, now)
     this.emit(this.library.setDownloadProgress(trackId, progress))
   }
 

@@ -1,5 +1,5 @@
 import { Minus, Square, X } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { memo, useCallback, useEffect, useState } from "react"
 import { useAppStore } from "@/stores/app.store"
 
 /** Minimal SVG icon for the "restore down" window state (two overlapping rectangles). */
@@ -23,10 +23,9 @@ function RestoreIcon({ className }: { className?: string }) {
   )
 }
 
-export function TitleBar() {
+export const TitleBar = memo(function TitleBar() {
   const playerState = useAppStore((s) => s.playerState)
-  const queue = useAppStore((s) => s.queue)
-  const currentQueueItem = queue.find((q) => q.id === playerState?.queueItemId)
+  const currentQueueItem = useAppStore((s) => s.currentQueueItem)
   const currentArtwork = currentQueueItem?.track?.thumbnailUrl ?? null
   const currentArtist = currentQueueItem?.track?.artist || "..."
   const [isMaximized, setIsMaximized] = useState(false)
@@ -138,4 +137,4 @@ export function TitleBar() {
       </div>
     </header>
   )
-}
+})

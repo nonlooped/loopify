@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "10dead98-fcf4-4bf0-853b-ff5ce0937c4d",
+  "id": "5b369910-8c54-4a26-beef-396cd7076e1b",
   "prevIds": [
-    "7a551879-cbf0-4ca0-8776-ebc272c5fc94"
+    "00000000-0000-0000-0000-000000000000"
   ],
   "ddl": [
     {
@@ -44,6 +44,14 @@
     },
     {
       "name": "queue_items",
+      "entityType": "tables"
+    },
+    {
+      "name": "recommendation_impressions",
+      "entityType": "tables"
+    },
+    {
+      "name": "recommendation_interactions",
       "entityType": "tables"
     },
     {
@@ -643,6 +651,26 @@
       "table": "lyrics_cache"
     },
     {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "lyrics_cache"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "(cast(strftime('%s','now') as integer))",
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "lyrics_cache"
+    },
+    {
       "type": "text",
       "notNull": false,
       "autoincrement": false,
@@ -871,6 +899,116 @@
       "name": "created_at",
       "entityType": "columns",
       "table": "queue_items"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "recommendation_impressions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "recommendation_impressions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "track_id",
+      "entityType": "columns",
+      "table": "recommendation_impressions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "position",
+      "entityType": "columns",
+      "table": "recommendation_impressions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "shown_at",
+      "entityType": "columns",
+      "table": "recommendation_impressions"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "recommendation_interactions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "recommendation_interactions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "track_id",
+      "entityType": "columns",
+      "table": "recommendation_interactions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "interaction_type",
+      "entityType": "columns",
+      "table": "recommendation_interactions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "interacted_at",
+      "entityType": "columns",
+      "table": "recommendation_interactions"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "metadata_json",
+      "entityType": "columns",
+      "table": "recommendation_interactions"
     },
     {
       "type": "text",
@@ -1283,7 +1421,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "album_tracks_album_id_albums_id_fk",
+      "name": "fk_album_tracks_album_id_albums_id_fk",
       "entityType": "fks",
       "table": "album_tracks"
     },
@@ -1298,7 +1436,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "album_tracks_track_id_tracks_id_fk",
+      "name": "fk_album_tracks_track_id_tracks_id_fk",
       "entityType": "fks",
       "table": "album_tracks"
     },
@@ -1313,7 +1451,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "albums_artist_id_artists_id_fk",
+      "name": "fk_albums_artist_id_artists_id_fk",
       "entityType": "fks",
       "table": "albums"
     },
@@ -1328,7 +1466,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "import_items_import_id_imports_id_fk",
+      "name": "fk_import_items_import_id_imports_id_fk",
       "entityType": "fks",
       "table": "import_items"
     },
@@ -1343,7 +1481,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "import_items_track_id_tracks_id_fk",
+      "name": "fk_import_items_track_id_tracks_id_fk",
       "entityType": "fks",
       "table": "import_items"
     },
@@ -1358,7 +1496,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "imports_target_playlist_id_playlists_id_fk",
+      "name": "fk_imports_target_playlist_id_playlists_id_fk",
       "entityType": "fks",
       "table": "imports"
     },
@@ -1373,7 +1511,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "play_history_track_id_tracks_id_fk",
+      "name": "fk_play_history_track_id_tracks_id_fk",
       "entityType": "fks",
       "table": "play_history"
     },
@@ -1388,7 +1526,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "playlist_tracks_playlist_id_playlists_id_fk",
+      "name": "fk_playlist_tracks_playlist_id_playlists_id_fk",
       "entityType": "fks",
       "table": "playlist_tracks"
     },
@@ -1403,7 +1541,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "playlist_tracks_track_id_tracks_id_fk",
+      "name": "fk_playlist_tracks_track_id_tracks_id_fk",
       "entityType": "fks",
       "table": "playlist_tracks"
     },
@@ -1418,7 +1556,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "queue_items_track_id_tracks_id_fk",
+      "name": "fk_queue_items_track_id_tracks_id_fk",
       "entityType": "fks",
       "table": "queue_items"
     },
@@ -1433,7 +1571,37 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "track_sources_track_id_tracks_id_fk",
+      "name": "fk_recommendation_impressions_track_id_tracks_id_fk",
+      "entityType": "fks",
+      "table": "recommendation_impressions"
+    },
+    {
+      "columns": [
+        "track_id"
+      ],
+      "tableTo": "tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_recommendation_interactions_track_id_tracks_id_fk",
+      "entityType": "fks",
+      "table": "recommendation_interactions"
+    },
+    {
+      "columns": [
+        "track_id"
+      ],
+      "tableTo": "tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_track_sources_track_id_tracks_id_fk",
       "entityType": "fks",
       "table": "track_sources"
     },
@@ -1448,7 +1616,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "tracks_artist_id_artists_id_fk",
+      "name": "fk_tracks_artist_id_artists_id_fk",
       "entityType": "fks",
       "table": "tracks"
     },
@@ -1463,7 +1631,7 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "tracks_album_id_albums_id_fk",
+      "name": "fk_tracks_album_id_albums_id_fk",
       "entityType": "fks",
       "table": "tracks"
     },
@@ -1562,6 +1730,24 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "recommendation_impressions_pk",
+      "table": "recommendation_impressions",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "recommendation_interactions_pk",
+      "table": "recommendation_interactions",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "resolver_cache_pk",
       "table": "resolver_cache",
       "entityType": "pks"
@@ -1624,34 +1810,6 @@
     {
       "columns": [
         {
-          "value": "deezer_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "idx_albums_deezer_id",
-      "entityType": "indexes",
-      "table": "albums"
-    },
-    {
-      "columns": [
-        {
-          "value": "deezer_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "idx_artists_deezer_id",
-      "entityType": "indexes",
-      "table": "artists"
-    },
-    {
-      "columns": [
-        {
           "value": "import_id",
           "isExpression": false
         }
@@ -1660,6 +1818,20 @@
       "where": null,
       "origin": "manual",
       "name": "idx_import_items_import",
+      "entityType": "indexes",
+      "table": "import_items"
+    },
+    {
+      "columns": [
+        {
+          "value": "track_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_import_items_track",
       "entityType": "indexes",
       "table": "import_items"
     },
@@ -1776,6 +1948,38 @@
     {
       "columns": [
         {
+          "value": "playlist_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_playlist_tracks_playlist_id",
+      "entityType": "indexes",
+      "table": "playlist_tracks"
+    },
+    {
+      "columns": [
+        {
+          "value": "playlist_id",
+          "isExpression": false
+        },
+        {
+          "value": "track_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "playlist_tracks_playlist_id_track_id_unique",
+      "entityType": "indexes",
+      "table": "playlist_tracks"
+    },
+    {
+      "columns": [
+        {
           "value": "sort_order",
           "isExpression": false
         }
@@ -1808,30 +2012,112 @@
     {
       "columns": [
         {
-          "value": "source_url",
+          "value": "status",
           "isExpression": false
         }
       ],
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "idx_resolver_cache_source",
+      "name": "idx_queue_items_status",
       "entityType": "indexes",
-      "table": "resolver_cache"
+      "table": "queue_items"
     },
     {
       "columns": [
         {
-          "value": "source_url",
+          "value": "session_id",
           "isExpression": false
         }
       ],
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "idx_track_sources_url",
+      "name": "idx_reco_impressions_session",
       "entityType": "indexes",
-      "table": "track_sources"
+      "table": "recommendation_impressions"
+    },
+    {
+      "columns": [
+        {
+          "value": "track_id",
+          "isExpression": false
+        },
+        {
+          "value": "shown_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_reco_impressions_track",
+      "entityType": "indexes",
+      "table": "recommendation_impressions"
+    },
+    {
+      "columns": [
+        {
+          "value": "shown_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_reco_impressions_time",
+      "entityType": "indexes",
+      "table": "recommendation_impressions"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_reco_interactions_session",
+      "entityType": "indexes",
+      "table": "recommendation_interactions"
+    },
+    {
+      "columns": [
+        {
+          "value": "track_id",
+          "isExpression": false
+        },
+        {
+          "value": "interacted_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_reco_interactions_track",
+      "entityType": "indexes",
+      "table": "recommendation_interactions"
+    },
+    {
+      "columns": [
+        {
+          "value": "interaction_type",
+          "isExpression": false
+        },
+        {
+          "value": "interacted_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_reco_interactions_type",
+      "entityType": "indexes",
+      "table": "recommendation_interactions"
     },
     {
       "columns": [
@@ -1952,6 +2238,42 @@
       "name": "idx_tracks_album_id",
       "entityType": "indexes",
       "table": "tracks"
+    },
+    {
+      "columns": [
+        "deezer_id"
+      ],
+      "nameExplicit": false,
+      "name": "albums_deezer_id_unique",
+      "entityType": "uniques",
+      "table": "albums"
+    },
+    {
+      "columns": [
+        "deezer_id"
+      ],
+      "nameExplicit": false,
+      "name": "artists_deezer_id_unique",
+      "entityType": "uniques",
+      "table": "artists"
+    },
+    {
+      "columns": [
+        "source_url"
+      ],
+      "nameExplicit": false,
+      "name": "resolver_cache_source_url_unique",
+      "entityType": "uniques",
+      "table": "resolver_cache"
+    },
+    {
+      "columns": [
+        "source_url"
+      ],
+      "nameExplicit": false,
+      "name": "track_sources_source_url_unique",
+      "entityType": "uniques",
+      "table": "track_sources"
     }
   ],
   "renames": []

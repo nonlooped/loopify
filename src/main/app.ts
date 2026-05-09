@@ -18,12 +18,26 @@ import { ImportService } from "./library/import-service"
 import { LyricsService } from "./lyrics/lyrics-service"
 import { PlayerService } from "./player/player-service"
 import { DISCORD_APPLICATION_ID, DiscordPresenceService } from "./presence/discord-presence-service"
+import { RecommendationService } from "./recommendations/recommendation-service"
 import { ResolverService } from "./resolver/resolver-service"
 import { UpdaterService } from "./updater/updater-service"
 
 log.initialize()
 log.info("Loopify starting...")
 
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+}
+
+app.on("second-instance", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  }
+})
+
+let mainWindow: BrowserWindow | null = null
 let player: PlayerService | null = null
 let presence: DiscordPresenceService | null = null
 let dbConnection: DatabaseConnection | null = null
@@ -74,6 +88,7 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
     },
   })
+  mainWindow = window
   Menu.setApplicationMenu(null)
   window.setMenuBarVisibility(false)
 
@@ -86,8 +101,11 @@ async function createWindow(): Promise<void> {
   queue.clear()
   queueRepository = queue
   const resolverCache = new ResolverCacheRepository(drizzleDb)
+  resolverCache.purgeExpired()
   const resolver = new ResolverService(settings, resolverCache)
-  const lyrics = new LyricsService(new LyricsCacheRepository(drizzleDb))
+  const lyricsCache = new LyricsCacheRepository(drizzleDb)
+  lyricsCache.purgeExpired()
+  const lyrics = new LyricsService(lyricsCache)
   player = new PlayerService(settings)
   const updater = new UpdaterService()
   presence = new DiscordPresenceService({
@@ -109,13 +127,29 @@ async function createWindow(): Promise<void> {
   )
   const downloads = new DownloadService(library, settings, {
     onTrackChanged: (track) => {
+      console.debug(
+        "[perf] downloads:changed",
+        track.id,
+        "status:",
+        track.downloadStatus,
+        "progress:",
+        track.downloadProgress
+      )
       try {
         window.webContents.send(ipcChannels.downloadsChanged, track)
       } catch {
         /* closed window */
       }
     },
+    onProgressChanged: (patch) => {
+      try {
+        window.webContents.send(ipcChannels.downloadsProgressChanged, patch)
+      } catch {
+        /* closed window */
+      }
+    },
   })
+  const recommendations = new RecommendationService(library, settings)
   registerIpcHandlers({
     window,
     player,
@@ -128,6 +162,7 @@ async function createWindow(): Promise<void> {
     settings,
     presence,
     updater,
+    recommendations,
   })
 
   updater.subscribe((status) => {

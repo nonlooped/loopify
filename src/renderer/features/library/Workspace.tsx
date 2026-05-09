@@ -10,6 +10,7 @@ import {
   Heart,
   Library,
   ListPlus,
+  Loader2,
   Pencil,
   Play,
   Plus,
@@ -17,7 +18,7 @@ import {
   Shuffle,
   Trash2,
 } from "lucide-react"
-import { memo, useCallback, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   isSystemPlaylistId,
   LIKED_SONGS_PLAYLIST_ID,
@@ -38,6 +39,7 @@ import { useAppStore } from "@/stores/app.store"
 import { showContextMenu } from "@/stores/context-menu.store"
 import { AlbumPage } from "./AlbumPage"
 import { ArtistPage } from "./ArtistPage"
+import { DiscoverPage } from "./DiscoverPage"
 import { PlaylistArtwork } from "./PlaylistArtwork"
 
 const PLAYLIST_TRACK_DRAG_MIME = "application/x-loopify-pl-entry"
@@ -106,7 +108,8 @@ export function Workspace() {
     // 2. Sort
     result.sort((a, b) => {
       if (collectionSort === "name") return a.name.localeCompare(b.name)
-      if (collectionSort === "count") return (b.tracks?.length || 0) - (a.tracks?.length || 0)
+      if (collectionSort === "count")
+        return (b.trackCount ?? b.tracks?.length ?? 0) - (a.trackCount ?? a.tracks?.length ?? 0)
       if (collectionSort === "duration") return (b.totalDurationMs || 0) - (a.totalDurationMs || 0)
       if (collectionSort === "recent") {
         // System playlists stay at top, then by most recent tracks if possible, else name
@@ -200,6 +203,44 @@ export function Workspace() {
     selectPlaylist(null)
   }, [selectPlaylist])
 
+  useEffect(() => {
+    if (libraryView.kind !== "playlist") return
+    const id = libraryView.id
+    if (!isSystemPlaylistId(id)) return
+    const p = playlists.find((pl) => pl.id === id)
+    if (!p || p.tracks !== undefined) return
+
+    let cancelled = false
+    void window.loopify.playlists
+      .getTracks(id)
+      .then((tracks) => {
+        if (cancelled) return
+        const totalDurationMs = tracks.reduce((sum, t) => sum + (t.durationMs ?? 0), 0)
+        useAppStore.setState((s) => ({
+          playlists: s.playlists.map((pl) =>
+            pl.id === id ? { ...pl, tracks, totalDurationMs, trackCount: tracks.length } : pl
+          ),
+        }))
+      })
+      .catch(() => {
+        if (cancelled) return
+        useAppStore.setState((s) => ({
+          playlists: s.playlists.map((pl) =>
+            pl.id === id ? { ...pl, tracks: [], trackCount: 0, totalDurationMs: 0 } : pl
+          ),
+        }))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [libraryView, playlists])
+
+  const showSystemPlaylistLoading =
+    activePlaylist != null &&
+    isSystemPlaylistId(activePlaylist.id) &&
+    activePlaylist.tracks === undefined
+
   const hasTracks = activePlaylist?.tracks && activePlaylist.tracks.length > 0
   const activeTracks = useMemo(
     () => sortPlaylistTracks(activePlaylist?.tracks ?? [], sortField, sortDirection),
@@ -209,6 +250,14 @@ export function Workspace() {
     sortField === "position" &&
     sortDirection === "asc" &&
     (activePlaylist ? !isSystemPlaylistId(activePlaylist.id) : true)
+
+  if (libraryView.kind === "discover") {
+    return (
+      <div className="flex min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-10 pb-10 sm:px-8 sm:pt-12 sm:pb-12 lg:px-12 lg:pt-16 lg:pb-16">
+        <DiscoverPage />
+      </div>
+    )
+  }
 
   if (libraryView.kind === "artist") {
     return (
@@ -403,7 +452,7 @@ export function Workspace() {
                       className="type-label mt-1 text-foreground/80"
                       style={{ viewTransitionName: playlistCountTransitionName(p.id) }}
                     >
-                      {formatPlaylistMeta(p.tracks?.length || 0, p.totalDurationMs)}
+                      {formatPlaylistMeta(p.trackCount ?? p.tracks?.length ?? 0, p.totalDurationMs)}
                     </p>
                   </div>
                 </div>
@@ -455,7 +504,7 @@ export function Workspace() {
                 style={{ viewTransitionName: playlistCountTransitionName(activePlaylist.id) }}
               >
                 {formatPlaylistMeta(
-                  activePlaylist.tracks?.length || 0,
+                  activePlaylist.trackCount ?? activePlaylist.tracks?.length ?? 0,
                   activePlaylist.totalDurationMs
                 )}
               </p>
@@ -541,7 +590,11 @@ export function Workspace() {
                 "rounded-2xl ring-2 ring-accent/60 ring-offset-2 ring-offset-canvas bg-accent/[0.03]"
             )}
           >
-            {activePlaylist.tracks && activePlaylist.tracks.length > 0 ? (
+            {showSystemPlaylistLoading ? (
+              <div className="flex justify-center py-24" role="status" aria-live="polite">
+                <Loader2 className="h-10 w-10 animate-spin-slow text-accent" aria-hidden />
+              </div>
+            ) : activePlaylist.tracks && activePlaylist.tracks.length > 0 ? (
               <div className="flex min-h-0 flex-1 flex-col">
                 <PlaylistSortControl
                   field={sortField}

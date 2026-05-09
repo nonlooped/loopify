@@ -8,9 +8,11 @@ import type {
   CatalogTrack,
   ImportJob,
   LyricsState,
+  PlayerPosition,
   PlayerState,
   PlayerTrack,
   Playlist,
+  PlaylistTrackItem,
   QueueItem,
   RepeatMode,
   ResolvedTrack,
@@ -58,6 +60,38 @@ export type UpdateStatus = {
   message: string | null
 }
 
+export type RecommendationItem = {
+  track: Track
+  score: number
+  reason: string
+}
+
+export type HomeRecommendations = {
+  sessionId: string
+  generatedAt: number
+  items: RecommendationItem[]
+}
+
+export type RecommendationInteractionType = "play" | "skip" | "like" | "save" | "dismiss"
+
+export type RecommendationMetrics = {
+  impressions: number
+  plays: number
+  likes: number
+  saves: number
+  skips: number
+  ctr: number
+  saveRate: number
+  skipRate: number
+}
+
+export type DownloadProgressPatch = {
+  trackId: string
+  downloadStatus: string
+  downloadProgress: number
+  downloadError: string | null
+}
+
 export type LoopifyApi = {
   window: {
     minimize: () => void
@@ -77,6 +111,7 @@ export type LoopifyApi = {
     setVolume: (volume: number) => Promise<PlayerState>
     setRepeatMode: (mode: RepeatMode) => Promise<PlayerState>
     onStateChange: (listener: (state: PlayerState) => void) => () => void
+    onPositionChange: (listener: (position: PlayerPosition) => void) => () => void
   }
   search: {
     query: (input: SearchQuery) => Promise<CatalogSearchResult[]>
@@ -107,6 +142,8 @@ export type LoopifyApi = {
   }
   playlists: {
     list: () => Promise<Playlist[]>
+    listMetadata: () => Promise<Playlist[]>
+    getTracks: (playlistId: string) => Promise<PlaylistTrackItem[]>
     create: (name: string) => Promise<Playlist[]>
     rename: (id: string, name: string) => Promise<Playlist[]>
     delete: (id: string) => Promise<Playlist[]>
@@ -124,6 +161,7 @@ export type LoopifyApi = {
     downloadPlaylist: (playlistId: string) => Promise<Playlist[]>
     removeTrackDownload: (trackId: string) => Promise<Track>
     onChange: (listener: (track: Track) => void) => () => void
+    onProgressChange: (listener: (patch: DownloadProgressPatch) => void) => () => void
   }
   imports: {
     start: (input: ImportStartInput) => Promise<ImportJob>
@@ -143,6 +181,22 @@ export type LoopifyApi = {
     installUpdate: () => Promise<void>
     onUpdateStatusChange: (listener: (status: UpdateStatus) => void) => () => void
   }
+  recommendations: {
+    isEnabled: () => Promise<boolean>
+    getHome: (limit?: number) => Promise<HomeRecommendations>
+    trackImpression: (input: {
+      sessionId: string
+      trackId: string
+      position: number
+    }) => Promise<void>
+    trackInteraction: (input: {
+      sessionId: string
+      trackId: string
+      type: RecommendationInteractionType
+      metadata?: string
+    }) => Promise<void>
+    getMetrics: () => Promise<RecommendationMetrics>
+  }
 }
 
 export const ipcChannels = {
@@ -153,6 +207,7 @@ export const ipcChannels = {
   windowIsMaximized: "window:is-maximized",
   windowMaximizedChanged: "window:maximized-changed",
   playerStateChanged: "player:state-changed",
+  playerPositionChanged: "player:position-changed",
   playerGetState: "player:get-state",
   playerPlay: "player:play",
   playerPause: "player:pause",
@@ -179,6 +234,8 @@ export const ipcChannels = {
   queueShuffle: "queue:shuffle",
   queueClear: "queue:clear",
   playlistsList: "playlists:list",
+  playlistsListMetadata: "playlists:list-metadata",
+  playlistsGetTracks: "playlists:get-tracks",
   playlistsCreate: "playlists:create",
   playlistsRename: "playlists:rename",
   playlistsDelete: "playlists:delete",
@@ -188,6 +245,7 @@ export const ipcChannels = {
   tracksSetLiked: "tracks:set-liked",
   tracksSetCandidateLiked: "tracks:set-candidate-liked",
   downloadsChanged: "downloads:changed",
+  downloadsProgressChanged: "downloads:progress-changed",
   downloadsDownloadTrack: "downloads:download-track",
   downloadsDownloadCandidate: "downloads:download-candidate",
   downloadsDownloadPlaylist: "downloads:download-playlist",
@@ -204,4 +262,9 @@ export const ipcChannels = {
   settingsDownloadUpdate: "settings:download-update",
   settingsInstallUpdate: "settings:install-update",
   settingsUpdateStatusChanged: "settings:update-status-changed",
+  recommendationsIsEnabled: "recommendations:is-enabled",
+  recommendationsGetHome: "recommendations:get-home",
+  recommendationsTrackImpression: "recommendations:track-impression",
+  recommendationsTrackInteraction: "recommendations:track-interaction",
+  recommendationsGetMetrics: "recommendations:get-metrics",
 } as const

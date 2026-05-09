@@ -33,8 +33,12 @@ import { SyncedLyricsView } from "./SyncedLyricsView"
 
 export function FloatingIsland() {
   const playerState = useAppStore((s) => s.playerState)
-  const queue = useAppStore((s) => s.queue)
+  const playerPosition = useAppStore((s) => s.playerPosition)
+  const currentQueueItem = useAppStore((s) => s.currentQueueItem)
   const isQueueOpen = useAppStore((s) => s.isQueueOpen)
+  const hasNext = useAppStore((s) => s.hasNext)
+  const hasPrevious = useAppStore((s) => s.hasPrevious)
+  const queue = useAppStore((s) => s.queue)
   const handlePlayPause = useAppStore((s) => s.handlePlayPause)
   const handleNext = useAppStore((s) => s.handleNext)
   const handlePrevious = useAppStore((s) => s.handlePrevious)
@@ -47,13 +51,9 @@ export function FloatingIsland() {
   const handleRemoveTrackDownload = useAppStore((s) => s.handleRemoveTrackDownload)
   const toggleQueue = useAppStore((s) => s.toggleQueue)
 
-  const currentQueueItem = queue.find((q) => q.id === playerState?.queueItemId)
   const currentTrack: Track | null = currentQueueItem?.track ?? null
   const currentArtwork = currentQueueItem?.track?.thumbnailUrl ?? ""
   const currentArtist = currentQueueItem?.track?.artist || "..."
-  const currentQueueIndex = queue.findIndex((q) => q.id === playerState?.queueItemId)
-  const hasNext = currentQueueIndex >= 0 && currentQueueIndex < queue.length - 1
-  const hasPrevious = currentQueueIndex > 0
   const canShuffleQueue = queue.length >= 2
   const repeatMode = playerState?.repeatMode ?? "off"
   const [isExpanded, setIsExpanded] = useState(false)
@@ -63,8 +63,8 @@ export function FloatingIsland() {
 
   const isPlaying = playerState?.status === "playing"
   const title = playerState?.title || "Not Playing"
-  const duration = playerState?.durationSeconds || 0
-  const position = playerState?.positionSeconds || 0
+  const duration = playerPosition?.durationSeconds || 0
+  const position = playerPosition?.positionSeconds || 0
   const volume = playerState?.volume ?? 100
   const hasTrack = Boolean(playerState?.queueItemId)
   const isLiked = Boolean(currentTrack?.likedAt)

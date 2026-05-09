@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process"
 import ms from "ms"
+import pLimit from "p-limit"
 import type {
   AlbumDetails,
   ArtistDiscography,
@@ -18,6 +19,7 @@ import { resolveYtdlpPath } from "./resolve-ytdlp"
 import { type MatcherEntry, pickBestMatch } from "./youtube-source-matcher"
 
 const STAGE2_SEARCH_LIMIT = 8
+const DEEZER_ENRICH_CONCURRENCY = 4
 
 export type PlaylistResolution = {
   title: string
@@ -294,17 +296,20 @@ export class ResolverService {
       this.toCandidate(entry, entry.webpage_url ?? entry.url ?? inputUrl)
     )
 
+    const limit = pLimit(DEEZER_ENRICH_CONCURRENCY)
     const enriched = await Promise.all(
-      tracks.map(async (candidate) => {
-        const enriched = await this.enrichWithDeezer(candidate, settings.deezerMatchThreshold)
-        this.cache.setResolved(candidate.sourceUrl, {
-          candidate: enriched,
-          streamUrl: null,
-          expiresAt: this.metadataExpiresAt(),
-          streamExpiresAt: null,
+      tracks.map((candidate) =>
+        limit(async () => {
+          const enriched = await this.enrichWithDeezer(candidate, settings.deezerMatchThreshold)
+          this.cache.setResolved(candidate.sourceUrl, {
+            candidate: enriched,
+            streamUrl: null,
+            expiresAt: this.metadataExpiresAt(),
+            streamExpiresAt: null,
+          })
+          return enriched
         })
-        return enriched
-      })
+      )
     )
 
     return {

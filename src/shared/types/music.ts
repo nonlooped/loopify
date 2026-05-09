@@ -126,6 +126,8 @@ export type Playlist = {
   updatedAt: number
   isSystem?: boolean
   totalDurationMs: number
+  /** When present without loading full `tracks`, used for sorting and playlist cards. */
+  trackCount?: number
   tracks?: PlaylistTrackItem[]
 }
 
@@ -158,6 +160,12 @@ export type ImportJob = {
   finishedAt: number | null
   /** Set when the job ends in `failed` (e.g. resolver error). */
   errorMessage: string | null
+}
+
+export type PlayerPosition = {
+  positionSeconds: number
+  durationSeconds: number | null
+  bufferedDuration: number
 }
 
 export type PlayerState = {
@@ -224,6 +232,7 @@ export type LyricsState =
     }
 
 export type AppSettings = {
+  installationId: string
   mpvPath: string
   ytdlpPath: string
   playbackVolume: number
@@ -244,4 +253,8 @@ export type AppSettings = {
   importProgressThrottle: number
   /** Share active playback to Discord via Rich Presence. */
   discordPresenceEnabled: boolean
+  /** Gate for recommendations UI and APIs. */
+  recommendationsEnabled: boolean
+  /** Percentage rollout (0-100) for recommendations. */
+  recommendationsRolloutPercent: number
 }

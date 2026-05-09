@@ -60,7 +60,7 @@ interface SortableQueueItemProps {
   onRemoveTrackDownload: (track: Track) => void
 }
 
-function SortableQueueItem({
+const SortableQueueItem = memo(function SortableQueueItem({
   item,
   index,
   virtualStyle,
@@ -257,13 +257,12 @@ function SortableQueueItem({
       ) : null}
     </li>
   )
-}
+})
 
 function QueueOverlayImpl({ compact = false }: QueueOverlayInnerProps) {
   const isOpen = useAppStore((s) => s.isQueueOpen)
   const queue = useAppStore((s) => s.queue)
-  const playerState = useAppStore((s) => s.playerState)
-  const currentQueueItemId = playerState?.queueItemId ?? null
+  const currentQueueItemId = useAppStore((s) => s.playerState?.queueItemId) ?? null
   const queueOnPlay = useAppStore((s) => s.queueOnPlay)
   const queueOnRemove = useAppStore((s) => s.queueOnRemove)
   const queueOnReorder = useAppStore((s) => s.queueOnReorder)

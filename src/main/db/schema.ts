@@ -1,34 +1,27 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
-export const artists = sqliteTable(
-  "artists",
-  {
-    id: text("id").primaryKey(),
-    deezerId: integer("deezer_id").unique(),
-    name: text("name").notNull(),
-    pictureUrl: text("picture_url"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [index("idx_artists_deezer_id").on(table.deezerId)]
-)
+export const artists = sqliteTable("artists", {
+  id: text("id").primaryKey(),
+  deezerId: integer("deezer_id").unique(),
+  name: text("name").notNull(),
+  pictureUrl: text("picture_url"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
 
-export const albums = sqliteTable(
-  "albums",
-  {
-    id: text("id").primaryKey(),
-    deezerId: integer("deezer_id").unique(),
-    title: text("title").notNull(),
-    artistId: text("artist_id").references(() => artists.id, { onDelete: "set null" }),
-    coverUrl: text("cover_url"),
-    releaseDate: text("release_date"),
-    trackCount: integer("track_count"),
-    albumType: text("album_type"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [index("idx_albums_deezer_id").on(table.deezerId)]
-)
+export const albums = sqliteTable("albums", {
+  id: text("id").primaryKey(),
+  deezerId: integer("deezer_id").unique(),
+  title: text("title").notNull(),
+  artistId: text("artist_id").references(() => artists.id, { onDelete: "set null" }),
+  coverUrl: text("cover_url"),
+  releaseDate: text("release_date"),
+  trackCount: integer("track_count"),
+  albumType: text("album_type"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
 
 export const albumTracks = sqliteTable(
   "album_tracks",
@@ -97,29 +90,24 @@ export const trackSources = sqliteTable(
     lastStatus: text("last_status").notNull().default("new"),
   },
   (table) => [
-    index("idx_track_sources_url").on(table.sourceUrl),
     index("idx_track_sources_track").on(table.trackId),
     index("idx_track_sources_provider_id").on(table.provider, table.sourceId),
   ]
 )
 
-export const resolverCache = sqliteTable(
-  "resolver_cache",
-  {
-    id: text("id").primaryKey(),
-    sourceUrl: text("source_url").notNull().unique(),
-    provider: text("provider").notNull(),
-    streamUrl: text("stream_url"),
-    metadataJson: text("metadata_json"),
-    expiresAt: integer("expires_at"),
-    streamExpiresAt: integer("stream_expires_at"),
-    failureCode: text("failure_code"),
-    failureMessage: text("failure_message"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [index("idx_resolver_cache_source").on(table.sourceUrl)]
-)
+export const resolverCache = sqliteTable("resolver_cache", {
+  id: text("id").primaryKey(),
+  sourceUrl: text("source_url").notNull().unique(),
+  provider: text("provider").notNull(),
+  streamUrl: text("stream_url"),
+  metadataJson: text("metadata_json"),
+  expiresAt: integer("expires_at"),
+  streamExpiresAt: integer("stream_expires_at"),
+  failureCode: text("failure_code"),
+  failureMessage: text("failure_message"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
 
 export const playlists = sqliteTable(
   "playlists",
@@ -151,6 +139,8 @@ export const playlistTracks = sqliteTable(
   (table) => [
     index("idx_playlist_tracks_playlist").on(table.playlistId, table.sortOrder),
     index("idx_playlist_tracks_track").on(table.trackId),
+    index("idx_playlist_tracks_playlist_id").on(table.playlistId),
+    uniqueIndex("playlist_tracks_playlist_id_track_id_unique").on(table.playlistId, table.trackId),
   ]
 )
 
@@ -164,7 +154,10 @@ export const queueItems = sqliteTable(
     status: text("status").notNull().default("queued"),
     createdAt: integer("created_at").notNull(),
   },
-  (table) => [index("idx_queue_items_order").on(table.sortOrder, table.createdAt)]
+  (table) => [
+    index("idx_queue_items_order").on(table.sortOrder, table.createdAt),
+    index("idx_queue_items_status").on(table.status),
+  ]
 )
 
 export const imports = sqliteTable(
@@ -208,7 +201,10 @@ export const importItems = sqliteTable(
     status: text("status").notNull(),
     error: text("error"),
   },
-  (table) => [index("idx_import_items_import").on(table.importId)]
+  (table) => [
+    index("idx_import_items_import").on(table.importId),
+    index("idx_import_items_track").on(table.trackId),
+  ]
 )
 
 export const playHistory = sqliteTable(
@@ -242,6 +238,10 @@ export const lyricsCache = sqliteTable(
     syncedLyricsJson: text("synced_lyrics_json"),
     errorMessage: text("error_message"),
     fetchedAt: integer("fetched_at").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(cast(strftime('%s','now') as integer))`),
   },
   (table) => [index("idx_lyrics_cache_canonical").on(table.canonicalUrl, table.provider)]
 )
@@ -251,3 +251,40 @@ export const settings = sqliteTable("settings", {
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
+
+export const recommendationImpressions = sqliteTable(
+  "recommendation_impressions",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    trackId: text("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    shownAt: integer("shown_at").notNull(),
+  },
+  (table) => [
+    index("idx_reco_impressions_session").on(table.sessionId),
+    index("idx_reco_impressions_track").on(table.trackId, table.shownAt),
+    index("idx_reco_impressions_time").on(table.shownAt),
+  ]
+)
+
+export const recommendationInteractions = sqliteTable(
+  "recommendation_interactions",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    trackId: text("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
+    interactionType: text("interaction_type").notNull(),
+    interactedAt: integer("interacted_at").notNull(),
+    metadataJson: text("metadata_json"),
+  },
+  (table) => [
+    index("idx_reco_interactions_session").on(table.sessionId),
+    index("idx_reco_interactions_track").on(table.trackId, table.interactedAt),
+    index("idx_reco_interactions_type").on(table.interactionType, table.interactedAt),
+  ]
+)

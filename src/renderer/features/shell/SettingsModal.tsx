@@ -84,6 +84,13 @@ export function SettingsModal() {
       discordPresenceEnabled: formData.has("discordPresenceEnabled")
         ? formData.get("discordPresenceEnabled") === "on"
         : settings.discordPresenceEnabled,
+      recommendationsEnabled: formData.has("recommendationsEnabled")
+        ? formData.get("recommendationsEnabled") === "on"
+        : settings.recommendationsEnabled,
+      recommendationsRolloutPercent: n(
+        "recommendationsRolloutPercent",
+        settings.recommendationsRolloutPercent
+      ),
     }
 
     setIsSaving(true)
@@ -272,6 +279,44 @@ export function SettingsModal() {
                               />
                             </div>
                           </label>
+                          <label className="group mt-6 flex cursor-pointer items-start justify-between gap-6 border-b border-border/40 pb-6">
+                            <div className="flex flex-col pr-8">
+                              <span className="type-body font-medium text-foreground transition-colors group-hover:text-white">
+                                Smart home recommendations
+                              </span>
+                              <span className="type-meta mt-1 text-muted">
+                                Enable personalized discovery cards on the home Collection screen.
+                              </span>
+                            </div>
+                            <div className="mt-1 shrink-0">
+                              <input
+                                type="checkbox"
+                                name="recommendationsEnabled"
+                                defaultChecked={settings.recommendationsEnabled}
+                                className="h-5 w-5 rounded border-subtle bg-white/5 transition-colors checked:bg-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                              />
+                            </div>
+                          </label>
+                          <div className="mt-6">
+                            <label
+                              htmlFor="recommendationsRolloutPercent"
+                              className="type-label mb-2 block text-foreground"
+                            >
+                              Recommendations rollout
+                            </label>
+                            <TextField
+                              id="recommendationsRolloutPercent"
+                              name="recommendationsRolloutPercent"
+                              type="number"
+                              min={0}
+                              max={100}
+                              defaultValue={settings.recommendationsRolloutPercent}
+                              className="h-11 max-w-xs"
+                            />
+                            <p className="type-meta mt-2 text-subtle">
+                              Percent of installations that receive recommendations.
+                            </p>
+                          </div>
                         </div>
                       </section>
                     </div>

@@ -1,6 +1,17 @@
 import { contextBridge, ipcRenderer } from "electron"
-import { ipcChannels, type LoopifyApi, type UpdateStatus } from "../shared/contracts/ipc"
-import type { ImportJob, PlayerState, QueueItem, Track } from "../shared/types/music"
+import {
+  type DownloadProgressPatch,
+  ipcChannels,
+  type LoopifyApi,
+  type UpdateStatus,
+} from "../shared/contracts/ipc"
+import type {
+  ImportJob,
+  PlayerPosition,
+  PlayerState,
+  QueueItem,
+  Track,
+} from "../shared/types/music"
 
 const api: LoopifyApi = {
   window: {
@@ -30,6 +41,12 @@ const api: LoopifyApi = {
         listener(state)
       ipcRenderer.on(ipcChannels.playerStateChanged, wrapped)
       return () => ipcRenderer.off(ipcChannels.playerStateChanged, wrapped)
+    },
+    onPositionChange: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, position: PlayerPosition): void =>
+        listener(position)
+      ipcRenderer.on(ipcChannels.playerPositionChanged, wrapped)
+      return () => ipcRenderer.off(ipcChannels.playerPositionChanged, wrapped)
     },
   },
   search: {
@@ -64,6 +81,8 @@ const api: LoopifyApi = {
   },
   playlists: {
     list: () => ipcRenderer.invoke(ipcChannels.playlistsList),
+    listMetadata: () => ipcRenderer.invoke(ipcChannels.playlistsListMetadata),
+    getTracks: (playlistId) => ipcRenderer.invoke(ipcChannels.playlistsGetTracks, playlistId),
     create: (name) => ipcRenderer.invoke(ipcChannels.playlistsCreate, name),
     rename: (id, name) => ipcRenderer.invoke(ipcChannels.playlistsRename, id, name),
     delete: (id) => ipcRenderer.invoke(ipcChannels.playlistsDelete, id),
@@ -90,6 +109,12 @@ const api: LoopifyApi = {
       const wrapped = (_event: Electron.IpcRendererEvent, track: Track): void => listener(track)
       ipcRenderer.on(ipcChannels.downloadsChanged, wrapped)
       return () => ipcRenderer.off(ipcChannels.downloadsChanged, wrapped)
+    },
+    onProgressChange: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, patch: DownloadProgressPatch): void =>
+        listener(patch)
+      ipcRenderer.on(ipcChannels.downloadsProgressChanged, wrapped)
+      return () => ipcRenderer.off(ipcChannels.downloadsProgressChanged, wrapped)
     },
   },
   imports: {
@@ -118,6 +143,15 @@ const api: LoopifyApi = {
       ipcRenderer.on(ipcChannels.settingsUpdateStatusChanged, wrapped)
       return () => ipcRenderer.off(ipcChannels.settingsUpdateStatusChanged, wrapped)
     },
+  },
+  recommendations: {
+    isEnabled: () => ipcRenderer.invoke(ipcChannels.recommendationsIsEnabled),
+    getHome: (limit) => ipcRenderer.invoke(ipcChannels.recommendationsGetHome, limit),
+    trackImpression: (input) =>
+      ipcRenderer.invoke(ipcChannels.recommendationsTrackImpression, input),
+    trackInteraction: (input) =>
+      ipcRenderer.invoke(ipcChannels.recommendationsTrackInteraction, input),
+    getMetrics: () => ipcRenderer.invoke(ipcChannels.recommendationsGetMetrics),
   },
 }
 

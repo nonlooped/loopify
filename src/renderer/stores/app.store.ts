@@ -1,9 +1,15 @@
 import { flushSync } from "react-dom"
-import type { UpdateStatus } from "src/shared/contracts/ipc"
+import type {
+  HomeRecommendations,
+  RecommendationMetrics,
+  UpdateStatus,
+} from "src/shared/contracts/ipc"
 import {
   type CatalogSearchResult,
   isSystemPlaylistId,
+  LIKED_SONGS_PLAYLIST_ID,
   OFFLINE_SONGS_PLAYLIST_ID,
+  type PlayerPosition,
   type PlayerState,
   type Playlist,
   type PlaylistTrackItem,
@@ -18,6 +24,7 @@ import { NEAR_END_OFFSET_SEC } from "../lib/keyboard-shortcuts"
 
 export type LibraryView =
   | { kind: "collection" }
+  | { kind: "discover" }
   | { kind: "playlist"; id: string }
   | { kind: "artist"; deezerId: number }
   | { kind: "album"; deezerId: number }
@@ -62,6 +69,9 @@ function withSystemFlagIfNeeded(playlist: Playlist, patch: Partial<Playlist>): P
 function patchTrackInPlaylists(playlists: Playlist[], updatedTrack: Track): Playlist[] {
   return playlists.map((playlist) => {
     if (playlist.id === OFFLINE_SONGS_PLAYLIST_ID) {
+      if (playlist.tracks === undefined) {
+        return playlist
+      }
       const existing = playlist.tracks ?? []
       const without = existing.filter((t) => t.id !== updatedTrack.id)
       if (
@@ -85,11 +95,29 @@ function patchTrackInPlaylists(playlists: Playlist[], updatedTrack: Track): Play
         totalDurationMs: sumPlaylistDurationMs(tracks),
       })
     }
+    if (playlist.id === LIKED_SONGS_PLAYLIST_ID && playlist.tracks === undefined) {
+      return playlist
+    }
     return withSystemFlagIfNeeded(playlist, {
       tracks: playlist.tracks?.map((track) =>
         track.id === updatedTrack.id ? { ...track, ...updatedTrack } : track
       ),
     })
+  })
+}
+
+function mergeFreshPlaylists(prevList: Playlist[], freshList: Playlist[]): Playlist[] {
+  return freshList.map((fresh) => {
+    const prev = prevList.find((p) => p.id === fresh.id)
+    if (!prev) return fresh
+    if (prev.tracks !== undefined && fresh.tracks === undefined) {
+      return {
+        ...fresh,
+        tracks: prev.tracks,
+        trackCount: prev.trackCount ?? prev.tracks.length,
+      }
+    }
+    return fresh
   })
 }
 
@@ -102,11 +130,20 @@ function patchTrackInQueue(queue: QueueItem[], updatedTrack: Track): QueueItem[]
 }
 
 function patchTrackEverywhere(
-  state: { queue: QueueItem[]; playlists: Playlist[] },
+  state: { queue: QueueItem[]; playlists: Playlist[]; playerState: PlayerState | null },
   updatedTrack: Track
-): { queue: QueueItem[]; playlists: Playlist[] } {
+): {
+  queue: QueueItem[]
+  playlists: Playlist[]
+  currentQueueItem: QueueItem | null
+  currentTrackIndex: number
+  hasNext: boolean
+  hasPrevious: boolean
+  queueMap: Map<string, QueueItem>
+} {
+  const nextQueue = patchTrackInQueue(state.queue, updatedTrack)
   return {
-    queue: patchTrackInQueue(state.queue, updatedTrack),
+    ...setQueue(nextQueue, state.playerState?.queueItemId),
     playlists: patchTrackInPlaylists(state.playlists, updatedTrack),
   }
 }
@@ -117,12 +154,29 @@ function nextRepeatMode(mode: RepeatMode): RepeatMode {
   return "off"
 }
 
+function deriveQueueNavigation(queue: QueueItem[], queueItemId: string | null | undefined) {
+  const currentTrackIndex = queue.findIndex((item) => item.id === queueItemId)
+  const currentQueueItem = currentTrackIndex >= 0 ? queue[currentTrackIndex] : null
+  return {
+    currentQueueItem: currentQueueItem as QueueItem | null,
+    currentTrackIndex,
+    hasNext: currentTrackIndex >= 0 && currentTrackIndex < queue.length - 1,
+    hasPrevious: currentTrackIndex > 0,
+  }
+}
+
 interface AppState {
   bootPhase: BootPhase
   bootError: string | null
   playerState: PlayerState | null
+  playerPosition: PlayerPosition | null
   playlists: Playlist[]
   queue: QueueItem[]
+  queueMap: Map<string, QueueItem>
+  currentQueueItem: QueueItem | null
+  currentTrackIndex: number
+  hasNext: boolean
+  hasPrevious: boolean
   libraryView: LibraryView
   previousLibraryView: LibraryView | null
 
@@ -142,6 +196,9 @@ interface AppState {
   queueClearConfirming: boolean
 
   updateStatus: UpdateStatus | null
+  recommendationsEnabled: boolean
+  homeRecommendations: HomeRecommendations | null
+  recommendationMetrics: RecommendationMetrics | null
   dismissedUpdatePhase: string | null
   actionError: string | null
   shellReveal: boolean
@@ -154,6 +211,14 @@ interface AppState {
 
   refreshQueue: () => Promise<QueueItem[]>
   refreshPlaylists: () => Promise<Playlist[]>
+  refreshPlaylistsMetadata: () => Promise<Playlist[]>
+  refreshRecommendations: () => Promise<void>
+  trackRecommendationImpression: (trackId: string, position: number) => Promise<void>
+  trackRecommendationInteraction: (
+    trackId: string,
+    type: "play" | "skip" | "like" | "save" | "dismiss",
+    metadata?: string
+  ) => Promise<void>
 
   setLibraryView: (view: LibraryView) => void
   selectPlaylistWithTransition: (id: string | null) => void
@@ -220,12 +285,26 @@ interface AppState {
   setPlaylistAction: (s: PlaylistActionState | null) => void
 }
 
+function setQueue(nextQueue: QueueItem[], queueItemId: string | null | undefined) {
+  return {
+    queue: nextQueue,
+    ...deriveQueueNavigation(nextQueue, queueItemId),
+    queueMap: new Map(nextQueue.map((item) => [item.id, item])),
+  }
+}
+
 export const useAppStore = create<AppState>()((set, get) => ({
   bootPhase: "loading",
   bootError: null,
   playerState: null,
+  playerPosition: null,
   playlists: [],
   queue: [],
+  queueMap: new Map(),
+  currentQueueItem: null,
+  currentTrackIndex: -1,
+  hasNext: false,
+  hasPrevious: false,
   libraryView: { kind: "collection" },
   previousLibraryView: null,
 
@@ -245,6 +324,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
   queueClearConfirming: false,
 
   updateStatus: null,
+  recommendationsEnabled: false,
+  homeRecommendations: null,
+  recommendationMetrics: null,
   dismissedUpdatePhase: null,
   actionError: null,
   shellReveal: false,
@@ -261,11 +343,28 @@ export const useAppStore = create<AppState>()((set, get) => ({
         window.loopify.playlists.list(),
         window.loopify.queue.list(),
       ])
+      const recommendationsEnabled = await window.loopify.recommendations.isEnabled()
+      const [homeRecommendations, recommendationMetrics] = recommendationsEnabled
+        ? await Promise.all([
+            window.loopify.recommendations.getHome(12),
+            window.loopify.recommendations.getMetrics(),
+          ])
+        : [null, null]
       set({
         playerState: initialPlayer,
+        playerPosition: {
+          positionSeconds: initialPlayer.positionSeconds,
+          durationSeconds: initialPlayer.durationSeconds,
+          bufferedDuration: 0,
+        },
         lastPlayerState: initialPlayer,
         playlists: initialPlaylists,
         queue: initialQueue,
+        ...deriveQueueNavigation(initialQueue, initialPlayer?.queueItemId),
+        queueMap: new Map(initialQueue.map((item) => [item.id, item])),
+        recommendationsEnabled,
+        homeRecommendations,
+        recommendationMetrics,
         bootPhase: "ready",
       })
     } catch (error) {
@@ -281,21 +380,45 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   initSubscriptions: () => {
+    let lastPlayerMetadataJson = ""
     const unsubPlayer = window.loopify.player.onStateChange((newState) => {
+      const { positionSeconds: _pos, durationSeconds: _dur, ...metaOnly } = newState
+      const metaJson = JSON.stringify(metaOnly)
+      if (metaJson === lastPlayerMetadataJson) {
+        return
+      }
+      lastPlayerMetadataJson = metaJson
+
       const previousState = get().lastPlayerState
       const shouldRefreshCollections =
         !previousState ||
         previousState.queueItemId !== newState.queueItemId ||
         previousState.status !== newState.status ||
         previousState.title !== newState.title
-      set({ playerState: newState, lastPlayerState: newState })
+      set({
+        playerState: newState,
+        lastPlayerState: newState,
+        playerPosition: {
+          positionSeconds: newState.positionSeconds,
+          durationSeconds: newState.durationSeconds,
+          bufferedDuration: 0,
+        },
+        ...deriveQueueNavigation(get().queue, newState.queueItemId),
+      })
       if (shouldRefreshCollections) {
         get().refreshQueue().catch(console.error)
       }
     })
 
+    const unsubPosition = window.loopify.player.onPositionChange((position) => {
+      set({ playerPosition: position })
+    })
+
     const unsubQueue = window.loopify.queue.onChange((nextQueue) => {
-      set({ queue: nextQueue })
+      const { playerState } = get()
+      set({
+        ...setQueue(nextQueue, playerState?.queueItemId),
+      })
     })
 
     const unsubSettings = window.loopify.settings.onUpdateStatusChange((status) => {
@@ -307,14 +430,18 @@ export const useAppStore = create<AppState>()((set, get) => ({
       .catch(console.error)
 
     const unsubDownloads = window.loopify.downloads.onChange((track) => {
-      set((state) => ({
-        queue: patchTrackInQueue(state.queue, track),
-        playlists: patchTrackInPlaylists(state.playlists, track),
-      }))
+      set((state) => {
+        const nextQueue = patchTrackInQueue(state.queue, track)
+        return {
+          ...setQueue(nextQueue, state.playerState?.queueItemId),
+          playlists: patchTrackInPlaylists(state.playlists, track),
+        }
+      })
     })
 
     return () => {
       unsubPlayer()
+      unsubPosition()
       unsubQueue()
       unsubSettings()
       unsubDownloads()
@@ -323,14 +450,63 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   refreshQueue: async () => {
     const updated = await window.loopify.queue.list()
-    set({ queue: updated })
+    const { playerState } = get()
+    set({
+      queue: updated,
+      ...deriveQueueNavigation(updated, playerState?.queueItemId),
+      queueMap: new Map(updated.map((item) => [item.id, item])),
+    })
     return updated
   },
 
   refreshPlaylists: async () => {
     const updated = await window.loopify.playlists.list()
-    set({ playlists: updated })
+    set((state) => ({
+      playlists: mergeFreshPlaylists(state.playlists, updated),
+    }))
     return updated
+  },
+
+  refreshPlaylistsMetadata: async () => {
+    const metadata = await window.loopify.playlists.listMetadata()
+    set((state) => ({
+      playlists: metadata.map((meta) => {
+        const existing = state.playlists.find((p) => p.id === meta.id)
+        if (existing) {
+          return {
+            ...meta,
+            tracks: existing.tracks,
+            totalDurationMs: meta.totalDurationMs,
+            trackCount: meta.trackCount ?? existing.trackCount,
+          }
+        }
+        return meta
+      }),
+    }))
+    return metadata
+  },
+
+  refreshRecommendations: async () => {
+    const { recommendationsEnabled } = get()
+    if (!recommendationsEnabled) return
+    const [homeRecommendations, recommendationMetrics] = await Promise.all([
+      window.loopify.recommendations.getHome(12),
+      window.loopify.recommendations.getMetrics(),
+    ])
+    set({ homeRecommendations, recommendationMetrics })
+  },
+
+  trackRecommendationImpression: async (trackId, position) => {
+    const sessionId = get().homeRecommendations?.sessionId
+    if (!sessionId) return
+    await window.loopify.recommendations.trackImpression({ sessionId, trackId, position })
+  },
+
+  trackRecommendationInteraction: async (trackId, type, metadata) => {
+    const sessionId = get().homeRecommendations?.sessionId
+    if (!sessionId) return
+    await window.loopify.recommendations.trackInteraction({ sessionId, trackId, type, metadata })
+    await get().refreshRecommendations()
   },
 
   setLibraryView: (view: LibraryView) => {
@@ -424,10 +600,14 @@ export const useAppStore = create<AppState>()((set, get) => ({
         nextState = await window.loopify.player.play(playerState.queueItemId)
       }
       if (nextState) {
-        set({ playerState: nextState, lastPlayerState: nextState })
+        const queue = get().queue
+        set({
+          playerState: nextState,
+          lastPlayerState: nextState,
+          ...deriveQueueNavigation(queue, nextState.queueItemId),
+        })
       }
-      await get().refreshQueue()
-      await get().refreshPlaylists()
+      await Promise.all([get().refreshQueue(), get().refreshPlaylists()])
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Playback could not be changed.") })
@@ -439,7 +619,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
       const { lastPlayerState, playerState } = get()
       const currentMode = lastPlayerState?.repeatMode ?? playerState?.repeatMode ?? "off"
       const nextState = await window.loopify.player.setRepeatMode(nextRepeatMode(currentMode))
-      set({ playerState: nextState, lastPlayerState: nextState })
+      const queue = get().queue
+      set({
+        playerState: nextState,
+        lastPlayerState: nextState,
+        ...deriveQueueNavigation(queue, nextState.queueItemId),
+      })
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not change repeat mode.") })
@@ -447,11 +632,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   handleNext: async () => {
-    const { queue, playerState } = get()
-    const currentIndex = queue.findIndex((q) => q.id === playerState?.queueItemId)
-    if (currentIndex < 0 || currentIndex >= queue.length - 1) return
+    const { queue, currentTrackIndex } = get()
+    if (currentTrackIndex < 0 || currentTrackIndex >= queue.length - 1) return
     try {
-      const nextState = await window.loopify.player.play(queue[currentIndex + 1].id)
+      const nextState = await window.loopify.player.play(queue[currentTrackIndex + 1].id)
       set({ playerState: nextState, lastPlayerState: nextState })
     } catch (err) {
       console.error(err)
@@ -460,11 +644,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   handlePrevious: async () => {
-    const { queue, playerState } = get()
-    const currentIndex = queue.findIndex((q) => q.id === playerState?.queueItemId)
-    if (currentIndex <= 0) return
+    const { queue, currentTrackIndex } = get()
+    if (currentTrackIndex <= 0) return
     try {
-      const nextState = await window.loopify.player.play(queue[currentIndex - 1].id)
+      const nextState = await window.loopify.player.play(queue[currentTrackIndex - 1].id)
       set({ playerState: nextState, lastPlayerState: nextState })
     } catch (err) {
       console.error(err)
@@ -558,9 +741,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   handlePlayTrack: async (track) => {
     try {
+      if ("id" in track) {
+        await get().trackRecommendationInteraction(track.id, "play")
+      }
       const sourceUrl = "sourceUrl" in track ? track.sourceUrl : track.canonicalUrl
       const updatedQueue = await window.loopify.queue.add({ sourceUrl, playNow: true })
-      set({ queue: updatedQueue })
+      set(setQueue(updatedQueue, get().playerState?.queueItemId))
       await get().refreshPlaylists()
     } catch (err) {
       console.error(err)
@@ -574,7 +760,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         sourceUrl: track.sourceUrl,
         playNow: false,
       })
-      set({ queue: updatedQueue })
+      set(setQueue(updatedQueue, get().playerState?.queueItemId))
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not add that track to the queue.") })
@@ -587,7 +773,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         sourceUrl: track.canonicalUrl,
         playNow: false,
       })
-      set({ queue: updatedQueue })
+      set(setQueue(updatedQueue, get().playerState?.queueItemId))
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not add that track to the queue.") })
@@ -595,15 +781,19 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   handlePlayPlaylist: async (playlist) => {
-    if (!playlist.tracks || playlist.tracks.length === 0) return
     try {
-      let sourceUrls = playlist.tracks.map((t) => t.canonicalUrl)
+      const tracks =
+        playlist.tracks && playlist.tracks.length > 0
+          ? playlist.tracks
+          : await window.loopify.playlists.getTracks(playlist.id)
+      if (tracks.length === 0) return
+      let sourceUrls = tracks.map((t) => t.canonicalUrl)
       const { playlistShuffleIds } = get()
       if (playlistShuffleIds.has(playlist.id)) {
         sourceUrls = shuffleArray(sourceUrls)
       }
       const next = await window.loopify.queue.addMany({ sourceUrls, playFromStart: true })
-      set({ queue: next })
+      set(setQueue(next, get().playerState?.queueItemId))
       await get().refreshPlaylists()
     } catch (err) {
       console.error("Failed to play playlist:", err)
@@ -612,11 +802,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   handleEnqueuePlaylist: async (playlist) => {
-    if (!playlist.tracks || playlist.tracks.length === 0) return
     try {
-      const sourceUrls = playlist.tracks.map((t) => t.canonicalUrl)
+      const tracks =
+        playlist.tracks && playlist.tracks.length > 0
+          ? playlist.tracks
+          : await window.loopify.playlists.getTracks(playlist.id)
+      if (tracks.length === 0) return
+      const sourceUrls = tracks.map((t) => t.canonicalUrl)
       const next = await window.loopify.queue.addMany({ sourceUrls, playFromStart: false })
-      set({ queue: next })
+      set(setQueue(next, get().playerState?.queueItemId))
     } catch (err) {
       console.error("Failed to enqueue playlist:", err)
       set({ actionError: formatActionError(err, "Could not add that playlist to the queue.") })
@@ -628,7 +822,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     if (queue.length < 2) return
     try {
       const nextQ = await window.loopify.queue.shuffle()
-      set({ queue: nextQ })
+      set(setQueue(nextQ, get().playerState?.queueItemId))
     } catch (err) {
       console.error("Failed to shuffle queue:", err)
       set({ actionError: formatActionError(err, "Could not shuffle the queue.") })
@@ -649,7 +843,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
   queueOnPlay: async (item) => {
     try {
       const nextState = await window.loopify.player.play(item.id)
-      set({ playerState: nextState, lastPlayerState: nextState })
+      const queue = get().queue
+      set({
+        playerState: nextState,
+        lastPlayerState: nextState,
+        ...setQueue(queue, nextState.queueItemId),
+      })
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not play that queue item.") })
@@ -659,7 +858,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   queueOnRemove: async (id) => {
     try {
       const nextQ = await window.loopify.queue.remove(id)
-      set({ queue: nextQ })
+      set(setQueue(nextQ, get().playerState?.queueItemId))
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not remove that item from the queue.") })
@@ -669,7 +868,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   queueOnClear: async () => {
     try {
       const nextQ = await window.loopify.queue.clear()
-      set({ queue: nextQ })
+      set(setQueue(nextQ, get().playerState?.queueItemId))
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not clear the queue.") })
@@ -679,7 +878,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   queueOnReorder: async (id, newIndex) => {
     try {
       const nextQ = await window.loopify.queue.move(id, newIndex)
-      set({ queue: nextQ })
+      set(setQueue(nextQ, get().playerState?.queueItemId))
     } catch (err) {
       console.error(err)
       set({ actionError: formatActionError(err, "Could not reorder the queue.") })
@@ -699,27 +898,27 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   submitPlaylistCreate: async (name) => {
-    const updated = await window.loopify.playlists.create(name)
-    const lastPlaylist = updated[updated.length - 1]
-    set({
-      playlists: updated,
-      libraryView: lastPlaylist ? { kind: "playlist", id: lastPlaylist.id } : get().libraryView,
-    })
+    await window.loopify.playlists.create(name)
+    const metadata = await get().refreshPlaylistsMetadata()
+    const lastPlaylist = metadata[metadata.length - 1]
+    if (lastPlaylist) {
+      set({ libraryView: { kind: "playlist", id: lastPlaylist.id } })
+    }
   },
 
   submitPlaylistRename: async (id, name) => {
-    const updated = await window.loopify.playlists.rename(id, name)
-    set({ playlists: updated })
+    await window.loopify.playlists.rename(id, name)
+    await get().refreshPlaylistsMetadata()
   },
 
   submitPlaylistDelete: async (id) => {
     const { libraryView } = get()
-    const updated = await window.loopify.playlists.delete(id)
     const isViewingDeletedPlaylist = libraryView.kind === "playlist" && libraryView.id === id
-    set({
-      playlists: updated,
-      libraryView: isViewingDeletedPlaylist ? { kind: "collection" } : libraryView,
-    })
+    await window.loopify.playlists.delete(id)
+    await get().refreshPlaylistsMetadata()
+    if (isViewingDeletedPlaylist) {
+      set({ libraryView: { kind: "collection" } })
+    }
   },
 
   handleRemoveFromPlaylist: async (playlistId, entryId) => {
@@ -745,7 +944,14 @@ export const useAppStore = create<AppState>()((set, get) => ({
   handleToggleLikeTrack: async (track) => {
     try {
       const updatedTrack = await window.loopify.tracks.setLiked(track.id, !track.likedAt)
-      set((state) => ({ queue: patchTrackInQueue(state.queue, updatedTrack) }))
+      if (!track.likedAt) {
+        await get().trackRecommendationInteraction(track.id, "like")
+        await get().trackRecommendationInteraction(track.id, "save")
+      }
+      set((state) => {
+        const nextQueue = patchTrackInQueue(state.queue, updatedTrack)
+        return setQueue(nextQueue, state.playerState?.queueItemId)
+      })
       await get().refreshPlaylists()
     } catch (err) {
       console.error(err)
@@ -756,7 +962,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   handleLikeCandidate: async (track) => {
     try {
       const updatedTrack = await window.loopify.tracks.setCandidateLiked(track, true)
-      set((state) => ({ queue: patchTrackInQueue(state.queue, updatedTrack) }))
+      set((state) => {
+        const nextQueue = patchTrackInQueue(state.queue, updatedTrack)
+        return setQueue(nextQueue, state.playerState?.queueItemId)
+      })
       await get().refreshPlaylists()
     } catch (err) {
       console.error(err)
@@ -787,7 +996,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   handleDownloadCandidate: async (track) => {
     try {
       const updatedTrack = await window.loopify.downloads.downloadCandidate(track)
-      set((state) => ({ queue: patchTrackInQueue(state.queue, updatedTrack) }))
+      set((state) => {
+        const nextQueue = patchTrackInQueue(state.queue, updatedTrack)
+        return setQueue(nextQueue, state.playerState?.queueItemId)
+      })
       await get().refreshPlaylists()
     } catch (err) {
       console.error(err)

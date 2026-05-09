@@ -4,6 +4,7 @@ import { z } from "zod"
 import { ipcChannels } from "../../shared/contracts/ipc"
 import type {
   CatalogTrack,
+  PlayerPosition,
   PlayerTrack,
   QueueItem,
   RepeatMode,
@@ -16,6 +17,7 @@ import type { ImportService } from "../library/import-service"
 import type { LyricsService } from "../lyrics/lyrics-service"
 import type { PlayerService } from "../player/player-service"
 import type { DiscordPresenceService } from "../presence/discord-presence-service"
+import type { RecommendationService } from "../recommendations/recommendation-service"
 import type { ResolverService } from "../resolver/resolver-service"
 import type { UpdaterService } from "../updater/updater-service"
 
@@ -31,9 +33,11 @@ type HandlerDeps = {
   settings: SettingsRepository
   presence: DiscordPresenceService
   updater: UpdaterService
+  recommendations: RecommendationService
 }
 
 let cleanupPreviousHandlers: (() => void) | null = null
+let playerEmitCount = 0
 
 const nonEmptyString = z.string().trim().min(1)
 const nullableNonEmptyString = z.string().trim().min(1).nullable()
@@ -200,7 +204,15 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     }
   }
 
+  let lastMetadataJson = ""
+  let lastPositionEmitAt = 0
+  const POSITION_EMIT_THROTTLE_MS = 250
+
   deps.player.on("state", (state) => {
+    playerEmitCount++
+    if (playerEmitCount % 10 === 0) {
+      console.debug("[perf] player:state-changed emit #", playerEmitCount)
+    }
     deps.presence.sync(state)
     if (state.status === "idle" && state.queueItemId) {
       const finishedId = state.queueItemId
@@ -221,7 +233,24 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
         deps.player.clearNowPlayingAfterTrackEnded()
       }
     }
-    deps.window.webContents.send(ipcChannels.playerStateChanged, deps.player.getState())
+
+    const { positionSeconds, durationSeconds, ...metadata } = state
+    const metadataJson = JSON.stringify(metadata)
+    if (metadataJson !== lastMetadataJson) {
+      lastMetadataJson = metadataJson
+      deps.window.webContents.send(ipcChannels.playerStateChanged, state)
+    }
+
+    const position: PlayerPosition = {
+      positionSeconds,
+      durationSeconds: state.durationSeconds,
+      bufferedDuration: 0,
+    }
+    const now = Date.now()
+    if (now - lastPositionEmitAt >= POSITION_EMIT_THROTTLE_MS) {
+      lastPositionEmitAt = now
+      deps.window.webContents.send(ipcChannels.playerPositionChanged, position)
+    }
   })
 
   ipcHandle(ipcChannels.playerGetState, () => deps.player.getState())
@@ -306,12 +335,18 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     deps.resolver.resolveCatalog(catalogTrackSchema.parse(input) as CatalogTrack)
   )
 
-  ipcHandle(ipcChannels.queueList, () => deps.queue.list())
+  ipcHandle(ipcChannels.queueList, () => {
+    const start = performance.now()
+    const result = deps.queue.list()
+    const elapsed = performance.now() - start
+    console.debug("[perf] queue:list", elapsed.toFixed(1), "ms")
+    return result
+  })
   ipcHandle(ipcChannels.queueAdd, async (_event, input) => {
     const parsed = z
       .object({ sourceUrl: nonEmptyString, playNow: z.boolean().optional() })
       .parse(input)
-    // Map Deezer canonical URLs to their stored YouTube source URLs if available
+    const start = performance.now()
     const effectiveUrl =
       deps.library.findSourceUrlByCanonicalUrl(parsed.sourceUrl) ?? parsed.sourceUrl
     if (parsed.playNow) {
@@ -323,12 +358,20 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     const item = queue[queue.length - 1]
     if (parsed.playNow && item) {
       await playQueueItem(item.id)
-      return emitQueue()
+      const result = emitQueue()
+      const elapsed = performance.now() - start
+      console.debug("[perf] queue:add", elapsed.toFixed(1), "ms")
+      return result
     }
     if (item) {
       resolveQueueItemInBackground({ id: item.id, sourceUrl: item.sourceUrl })
-      return maybeStartFirstQueuedItem()
+      const result = maybeStartFirstQueuedItem()
+      const elapsed = performance.now() - start
+      console.debug("[perf] queue:add", elapsed.toFixed(1), "ms")
+      return result
     }
+    const elapsed = performance.now() - start
+    console.debug("[perf] queue:add", elapsed.toFixed(1), "ms")
     return queue
   })
   ipcHandle(ipcChannels.queueAddMany, async (_event, input) => {
@@ -341,35 +384,27 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     if (parsed.sourceUrls.length === 0) {
       return deps.queue.list()
     }
-    // Map Deezer canonical URLs to stored YouTube source URLs
     const urlMap = deps.library.findSourceUrlsForCanonicalUrls(parsed.sourceUrls)
     const mappedUrls = parsed.sourceUrls.map((url) => urlMap.get(url) ?? url)
     if (parsed.playFromStart) {
       await deps.player.stop()
       deps.queue.clear()
       emitQueue()
-      for (const sourceUrl of mappedUrls) {
-        deps.queue.add(sourceUrl)
-      }
-      const list = deps.queue.list()
-      const first = list[0]
+      const queue = deps.queue.addMany(mappedUrls)
+      const first = queue[0]
       if (!first) {
         return emitQueue()
       }
       await playQueueItem(first.id)
-      for (let i = 1; i < list.length; i++) {
-        const item = list[i]
+      for (let i = 1; i < queue.length; i++) {
+        const item = queue[i]
         resolveQueueItemInBackground({ id: item.id, sourceUrl: item.sourceUrl })
       }
       return emitQueue()
     }
-    for (const sourceUrl of mappedUrls) {
-      deps.queue.add(sourceUrl)
-      const list = deps.queue.list()
-      const last = list[list.length - 1]
-      if (last) {
-        resolveQueueItemInBackground({ id: last.id, sourceUrl: last.sourceUrl })
-      }
+    const queue = deps.queue.addMany(mappedUrls)
+    for (const item of queue) {
+      resolveQueueItemInBackground({ id: item.id, sourceUrl: item.sourceUrl })
     }
     return maybeStartFirstQueuedItem()
   })
@@ -416,7 +451,28 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     console.error("Failed to reconcile queued playback on startup", err)
   })
 
-  ipcHandle(ipcChannels.playlistsList, () => deps.library.listPlaylists())
+  ipcHandle(ipcChannels.playlistsList, () => {
+    const start = performance.now()
+    const result = deps.library.listPlaylists()
+    const elapsed = performance.now() - start
+    console.debug("[perf] playlists:list", elapsed.toFixed(1), "ms")
+    return result
+  })
+  ipcHandle(ipcChannels.playlistsListMetadata, () => {
+    const start = performance.now()
+    const result = deps.library.listPlaylistsMetadata()
+    const elapsed = performance.now() - start
+    console.debug("[perf] playlists:list-metadata", elapsed.toFixed(1), "ms")
+    return result
+  })
+  ipcHandle(ipcChannels.playlistsGetTracks, (_event, playlistId) => {
+    const parsedId = nonEmptyString.parse(playlistId)
+    const start = performance.now()
+    const result = deps.library.getPlaylistTracks(parsedId)
+    const elapsed = performance.now() - start
+    console.debug("[perf] playlists:get-tracks", elapsed.toFixed(1), "ms")
+    return result
+  })
   ipcHandle(ipcChannels.playlistsCreate, (_event, name) =>
     deps.library.createPlaylist(nonEmptyString.parse(name))
   )
@@ -464,9 +520,14 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     )
   )
 
-  ipcHandle(ipcChannels.downloadsDownloadTrack, (_event, trackId) =>
-    deps.downloads.downloadTrack(nonEmptyString.parse(trackId))
-  )
+  ipcHandle(ipcChannels.downloadsDownloadTrack, (_event, trackId) => {
+    const parsedId = nonEmptyString.parse(trackId)
+    const start = performance.now()
+    const result = deps.downloads.downloadTrack(parsedId)
+    const elapsed = performance.now() - start
+    console.debug("[perf] downloads:download-track", elapsed.toFixed(1), "ms")
+    return result
+  })
   ipcHandle(ipcChannels.downloadsDownloadCandidate, (_event, candidate) =>
     deps.downloads.downloadCandidate(trackCandidateSchema.parse(candidate) as TrackCandidate)
   )
@@ -514,6 +575,8 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
         deezerMatchThreshold: z.number().min(0).max(1).optional(),
         importProgressThrottle: z.number().int().min(1).max(100).optional(),
         discordPresenceEnabled: z.boolean().optional(),
+        recommendationsEnabled: z.boolean().optional(),
+        recommendationsRolloutPercent: z.number().int().min(0).max(100).optional(),
       })
       .parse(patch)
     const updated = deps.settings.update(parsed)
@@ -521,6 +584,40 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     deps.presence.sync(deps.player.getState())
     return updated
   })
+
+  ipcHandle(ipcChannels.recommendationsIsEnabled, () => deps.recommendations.isEnabled())
+  ipcHandle(ipcChannels.recommendationsGetHome, (_event, limit) =>
+    deps.recommendations.getHomeRecommendations(
+      z.number().int().min(1).max(48).optional().parse(limit)
+    )
+  )
+  ipcHandle(ipcChannels.recommendationsTrackImpression, (_event, input) => {
+    const parsed = z
+      .object({
+        sessionId: nonEmptyString,
+        trackId: nonEmptyString,
+        position: z.number().int().min(0),
+      })
+      .parse(input)
+    deps.recommendations.trackImpression(parsed.sessionId, parsed.trackId, parsed.position)
+  })
+  ipcHandle(ipcChannels.recommendationsTrackInteraction, (_event, input) => {
+    const parsed = z
+      .object({
+        sessionId: nonEmptyString,
+        trackId: nonEmptyString,
+        type: z.enum(["play", "skip", "like", "save", "dismiss"]),
+        metadata: z.string().optional(),
+      })
+      .parse(input)
+    deps.recommendations.trackInteraction(
+      parsed.sessionId,
+      parsed.trackId,
+      parsed.type,
+      parsed.metadata
+    )
+  })
+  ipcHandle(ipcChannels.recommendationsGetMetrics, () => deps.recommendations.getMetrics())
 
   cleanupPreviousHandlers = () => {
     deps.window.off("maximize", onWindowMaximize)

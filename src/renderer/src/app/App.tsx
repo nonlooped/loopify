@@ -1,18 +1,25 @@
 import { Loader2 } from "lucide-react"
-import { lazy, Suspense, useEffect } from "react"
+import { lazy, Profiler, Suspense, useEffect } from "react"
 import { AppErrorBanner } from "@/components/AppErrorBanner"
 import { Button } from "@/components/Button"
-import { ContextMenuRenderer } from "@/components/ContextMenu"
 import { UpdateBanner } from "@/components/UpdateBanner"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
 import { cn } from "@/lib/cn"
 import { useAppKeyboardShortcuts } from "@/lib/keyboard-shortcuts"
 import { useAppStore } from "@/stores/app.store"
-import { Workspace } from "../../features/library/Workspace"
-import { FloatingIsland } from "../../features/player/FloatingIsland"
 import { NavRail } from "../../features/shell/NavRail"
 import { TitleBar } from "../../features/shell/TitleBar"
+
+const Workspace = lazy(() =>
+  import("../../features/library/Workspace").then((m) => ({ default: m.Workspace }))
+)
+const FloatingIsland = lazy(() =>
+  import("../../features/player/FloatingIsland").then((m) => ({ default: m.FloatingIsland }))
+)
+const ContextMenuRenderer = lazy(() =>
+  import("@/components/ContextMenu").then((m) => ({ default: m.ContextMenuRenderer }))
+)
 
 const CommandPalette = lazy(() =>
   import("../../features/shell/CommandPalette").then((m) => ({ default: m.CommandPalette }))
@@ -37,6 +44,24 @@ const ShortcutsOverlay = lazy(() =>
   }))
 )
 
+function onRenderCallback(
+  id: string,
+  phase: "mount" | "update" | "nested-update",
+  actualDuration: number,
+  baseDuration: number
+) {
+  if (actualDuration > 16) {
+    console.debug(
+      `[perf] ${id}.${phase}`,
+      actualDuration.toFixed(1),
+      "ms",
+      "(base:",
+      baseDuration.toFixed(1),
+      "ms)"
+    )
+  }
+}
+
 export function App() {
   const bootPhase = useAppStore((s) => s.bootPhase)
   const bootError = useAppStore((s) => s.bootError)
@@ -48,6 +73,8 @@ export function App() {
   const setIsCompactShell = useAppStore((s) => s.setIsCompactShell)
 
   const playerState = useAppStore((s) => s.playerState)
+  const hasNext = useAppStore((s) => s.hasNext)
+  const hasPrevious = useAppStore((s) => s.hasPrevious)
   const queue = useAppStore((s) => s.queue)
   const updateStatus = useAppStore((s) => s.updateStatus)
   const dismissedUpdatePhase = useAppStore((s) => s.dismissedUpdatePhase)
@@ -118,13 +145,6 @@ export function App() {
     return () => window.clearTimeout(t)
   }, [actionError, setActionError])
 
-  const currentQueueItemForShortcuts = queue.find((q) => q.id === playerState?.queueItemId)
-  const currentQueueIndexForShortcuts = currentQueueItemForShortcuts
-    ? queue.findIndex((q) => q.id === playerState?.queueItemId)
-    : -1
-  const hasNext =
-    currentQueueIndexForShortcuts >= 0 && currentQueueIndexForShortcuts < queue.length - 1
-  const hasPrevious = currentQueueIndexForShortcuts > 0
   const hasFloatingPlayer =
     Boolean(playerState?.queueItemId) &&
     (playerState?.status === "playing" || playerState?.status === "paused")
@@ -213,7 +233,11 @@ export function App() {
           <TitleBar />
           <div className="@container/shell relative flex min-h-0 min-w-0 flex-1 flex-row">
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-              <Workspace />
+              <Suspense fallback={null}>
+                <Profiler id="Workspace" onRender={onRenderCallback}>
+                  <Workspace />
+                </Profiler>
+              </Suspense>
 
               {shouldRenderFloatingPlayer && (
                 <div
@@ -225,13 +249,19 @@ export function App() {
                       : "opacity-0 translate-y-4 pointer-events-none"
                   )}
                 >
-                  <FloatingIsland />
+                  <Suspense fallback={null}>
+                    <Profiler id="FloatingIsland" onRender={onRenderCallback}>
+                      <FloatingIsland />
+                    </Profiler>
+                  </Suspense>
                 </div>
               )}
             </div>
 
             <Suspense fallback={null}>
-              <QueueOverlay compact={isCompactShell} />
+              <Profiler id="QueueOverlay" onRender={onRenderCallback}>
+                <QueueOverlay compact={isCompactShell} />
+              </Profiler>
             </Suspense>
           </div>
 
@@ -243,7 +273,9 @@ export function App() {
             <ShortcutsOverlay open={isShortcutsOpen} onClose={() => toggleShortcuts(false)} />
           </Suspense>
 
-          <ContextMenuRenderer />
+          <Suspense fallback={null}>
+            <ContextMenuRenderer />
+          </Suspense>
         </div>
       </div>
     </div>

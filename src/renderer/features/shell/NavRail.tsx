@@ -1,4 +1,5 @@
 import {
+  Compass,
   HardDrive,
   Heart,
   LayoutGrid,
@@ -56,9 +57,11 @@ export function NavRail() {
   const toggleSearch = useAppStore((s) => s.toggleSearch)
   const toggleSettings = useAppStore((s) => s.toggleSettings)
   const toggleImport = useAppStore((s) => s.toggleImport)
+  const setLibraryView = useAppStore((s) => s.setLibraryView)
   const handleCreatePlaylist = useAppStore((s) => s.handleCreatePlaylist)
   const toggleQueue = useAppStore((s) => s.toggleQueue)
   const atCollection = libraryView.kind === "collection"
+  const atDiscover = libraryView.kind === "discover"
   const likedActive = libraryView.kind === "playlist" && libraryView.id === LIKED_SONGS_PLAYLIST_ID
   const offlineActive =
     libraryView.kind === "playlist" && libraryView.id === OFFLINE_SONGS_PLAYLIST_ID
@@ -174,6 +177,15 @@ export function NavRail() {
               onContextMenu={(e) =>
                 showContextMenu(e, buildSystemPlaylistContextMenu(OFFLINE_SONGS_PLAYLIST_ID))
               }
+            />
+            <NavRow
+              expanded={isExpanded}
+              label="Discover"
+              active={atDiscover}
+              selection="location"
+              onClick={() => setLibraryView({ kind: "discover" })}
+              title="Discover"
+              icon={<Compass className="h-4 w-4" strokeWidth={2} />}
             />
           </div>
 

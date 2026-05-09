@@ -87,6 +87,7 @@ const queueItemColumns = {
 } as const
 
 const defaultSettings: AppSettings = {
+  installationId: randomUUID(),
   mpvPath: "mpv",
   ytdlpPath: "yt-dlp",
   playbackVolume: 75,
@@ -99,9 +100,12 @@ const defaultSettings: AppSettings = {
   deezerMatchThreshold: 0.35,
   importProgressThrottle: 3,
   discordPresenceEnabled: true,
+  recommendationsEnabled: true,
+  recommendationsRolloutPercent: 5,
 }
 
 const appSettingsSchema = z.object({
+  installationId: z.string().min(1),
   mpvPath: z.string(),
   ytdlpPath: z.string(),
   playbackVolume: z.number().int().min(0).max(100),
@@ -114,6 +118,8 @@ const appSettingsSchema = z.object({
   deezerMatchThreshold: z.number().min(0).max(1),
   importProgressThrottle: z.number().int().min(1).max(100),
   discordPresenceEnabled: z.boolean(),
+  recommendationsEnabled: z.boolean(),
+  recommendationsRolloutPercent: z.number().int().min(0).max(100),
 })
 
 function id(prefix: string): string {
@@ -125,9 +131,14 @@ function now(): number {
 }
 
 export class SettingsRepository {
+  private cache: AppSettings | null = null
+
   constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
 
   get(): AppSettings {
+    if (this.cache) {
+      return this.cache
+    }
     const rows = this.db.select().from(schema.settings).all()
 
     const raw: Record<string, unknown> = { ...defaultSettings }
@@ -144,22 +155,27 @@ export class SettingsRepository {
     }
 
     const result = appSettingsSchema.safeParse(raw)
-    return result.success ? result.data : defaultSettings
+    const resolved = result.success ? result.data : defaultSettings
+    this.cache = resolved
+    return resolved
   }
 
   update(patch: Partial<AppSettings>): AppSettings {
     const next = { ...this.get(), ...patch }
     const timestamp = now()
-    for (const [key, value] of Object.entries(next)) {
-      this.db
-        .insert(schema.settings)
-        .values({ key, value: String(value), updatedAt: timestamp })
-        .onConflictDoUpdate({
-          target: schema.settings.key,
-          set: { value: String(value), updatedAt: timestamp },
-        })
-        .run()
-    }
+    this.db.transaction(() => {
+      for (const [key, value] of Object.entries(next)) {
+        this.db
+          .insert(schema.settings)
+          .values({ key, value: String(value), updatedAt: timestamp })
+          .onConflictDoUpdate({
+            target: schema.settings.key,
+            set: { value: String(value), updatedAt: timestamp },
+          })
+          .run()
+      }
+    })
+    this.cache = next
     return next
   }
 }
@@ -168,113 +184,117 @@ export class LibraryRepository {
   constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
 
   upsertTrack(candidate: TrackCandidate): Track {
-    const existing = this.findTrackRowBySourceUrl(candidate.sourceUrl)
-    const existingById =
-      !existing && candidate.sourceId
-        ? this.findTrackRowByProviderSourceId(candidate.provider, candidate.sourceId)
-        : undefined
-    const row = existing ?? existingById
-    const timestamp = now()
+    return this.db.transaction(() => {
+      const existing = this.findTrackRowBySourceUrl(candidate.sourceUrl)
+      const existingById =
+        !existing && candidate.sourceId
+          ? this.findTrackRowByProviderSourceId(candidate.provider, candidate.sourceId)
+          : undefined
+      const row = existing ?? existingById
+      const timestamp = now()
 
-    if (row) {
-      const targetId = row.id
-      const fromAlternateSource = existingById && !existing
-      if (fromAlternateSource) {
-        const hasSourceUrl = this.db
-          .select()
-          .from(schema.trackSources)
-          .where(
-            and(
-              eq(schema.trackSources.trackId, targetId),
-              eq(schema.trackSources.sourceUrl, candidate.sourceUrl)
+      if (row) {
+        const targetId = row.id
+        const fromAlternateSource = existingById && !existing
+        if (fromAlternateSource) {
+          const hasSourceUrl = this.db
+            .select()
+            .from(schema.trackSources)
+            .where(
+              and(
+                eq(schema.trackSources.trackId, targetId),
+                eq(schema.trackSources.sourceUrl, candidate.sourceUrl)
+              )
             )
-          )
-          .get()
-        if (!hasSourceUrl) {
-          this.db
-            .insert(schema.trackSources)
-            .values({
-              id: id("src"),
-              trackId: targetId,
-              provider: candidate.provider,
-              sourceUrl: candidate.sourceUrl,
-              sourceId: candidate.sourceId,
-              extractor: candidate.extractor,
-              lastResolvedAt: timestamp,
-              lastStatus: "ready",
-            })
-            .run()
+            .get()
+          if (!hasSourceUrl) {
+            this.db
+              .insert(schema.trackSources)
+              .values({
+                id: id("src"),
+                trackId: targetId,
+                provider: candidate.provider,
+                sourceUrl: candidate.sourceUrl,
+                sourceId: candidate.sourceId,
+                extractor: candidate.extractor,
+                lastResolvedAt: timestamp,
+                lastStatus: "ready",
+              })
+              .run()
+          }
         }
+        const title =
+          candidate.title.trim() && candidate.title !== "Untitled track"
+            ? candidate.title
+            : row.title
+        this.db
+          .update(schema.tracks)
+          .set({
+            title,
+            artist: candidate.artist ?? row.artist,
+            album: candidate.album ?? row.album,
+            durationMs: candidate.durationMs ?? row.durationMs,
+            thumbnailUrl: candidate.thumbnailUrl ?? row.thumbnailUrl,
+            canonicalUrl: candidate.canonicalUrl,
+            provider: candidate.provider,
+            updatedAt: timestamp,
+          })
+          .where(eq(schema.tracks.id, targetId))
+          .run()
+        this.db
+          .update(schema.trackSources)
+          .set({
+            sourceId: candidate.sourceId,
+            extractor: candidate.extractor,
+            lastResolvedAt: timestamp,
+            lastStatus: "ready",
+          })
+          .where(eq(schema.trackSources.sourceUrl, candidate.sourceUrl))
+          .run()
+        const updated = this.getTrack(targetId)
+        if (!updated) {
+          throw new Error(`Expected track ${targetId} after upsert`)
+        }
+        return updated
       }
-      const title =
-        candidate.title.trim() && candidate.title !== "Untitled track" ? candidate.title : row.title
+
+      const trackId = id("trk")
       this.db
-        .update(schema.tracks)
-        .set({
-          title,
-          artist: candidate.artist ?? row.artist,
-          album: candidate.album ?? row.album,
-          durationMs: candidate.durationMs ?? row.durationMs,
-          thumbnailUrl: candidate.thumbnailUrl ?? row.thumbnailUrl,
+        .insert(schema.tracks)
+        .values({
+          id: trackId,
+          title: candidate.title,
+          artist: candidate.artist,
+          album: candidate.album ?? null,
+          artistId: null,
+          albumId: null,
+          durationMs: candidate.durationMs,
+          thumbnailUrl: candidate.thumbnailUrl,
           canonicalUrl: candidate.canonicalUrl,
           provider: candidate.provider,
+          createdAt: timestamp,
           updatedAt: timestamp,
         })
-        .where(eq(schema.tracks.id, targetId))
         .run()
       this.db
-        .update(schema.trackSources)
-        .set({
+        .insert(schema.trackSources)
+        .values({
+          id: id("src"),
+          trackId: trackId,
+          provider: candidate.provider,
+          sourceUrl: candidate.sourceUrl,
           sourceId: candidate.sourceId,
           extractor: candidate.extractor,
           lastResolvedAt: timestamp,
           lastStatus: "ready",
         })
-        .where(eq(schema.trackSources.sourceUrl, candidate.sourceUrl))
         .run()
-      const updated = this.getTrack(targetId)
-      if (!updated) {
-        throw new Error(`Expected track ${targetId} after upsert`)
+      const created = this.getTrack(trackId)
+      if (!created) {
+        throw new Error(`Expected track ${trackId} after insert`)
       }
-      return updated
-    }
-
-    const trackId = id("trk")
-    this.db
-      .insert(schema.tracks)
-      .values({
-        id: trackId,
-        title: candidate.title,
-        artist: candidate.artist,
-        album: candidate.album ?? null,
-        artistId: null,
-        albumId: null,
-        durationMs: candidate.durationMs,
-        thumbnailUrl: candidate.thumbnailUrl,
-        canonicalUrl: candidate.canonicalUrl,
-        provider: candidate.provider,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
-      .run()
-    this.db
-      .insert(schema.trackSources)
-      .values({
-        id: id("src"),
-        trackId: trackId,
-        provider: candidate.provider,
-        sourceUrl: candidate.sourceUrl,
-        sourceId: candidate.sourceId,
-        extractor: candidate.extractor,
-        lastResolvedAt: timestamp,
-        lastStatus: "ready",
-      })
-      .run()
-    const created = this.getTrack(trackId)
-    if (!created) {
-      throw new Error(`Expected track ${trackId} after insert`)
-    }
-    return created
+      return created
+    })
   }
 
   findTrackRowBySourceUrl(sourceUrl: string): DbTrack | undefined {
@@ -466,7 +486,8 @@ export class LibraryRepository {
           const track = txLibrary.upsertTrack(candidate)
           txLibrary.addTrackToPlaylistRecord(targetPlaylistId, track.id, candidate.sourceUrl)
           saved += 1
-        } catch {
+        } catch (error) {
+          console.error("Failed to save candidate:", candidate, error)
           failed += 1
         }
       }
@@ -519,9 +540,35 @@ export class LibraryRepository {
     ]
   }
 
+  listPlaylistsMetadata(): Playlist[] {
+    const rows = this.db
+      .select()
+      .from(schema.playlists)
+      .orderBy(asc(schema.playlists.sortOrder), asc(schema.playlists.createdAt))
+      .all()
+    return [
+      this.getLikedSongsPlaylist(),
+      this.getOfflineSongsPlaylist(),
+      ...rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        sortOrder: row.sortOrder,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        totalDurationMs: 0,
+        tracks: [],
+      })),
+    ]
+  }
+
+  getPlaylistTracks(playlistId: string): PlaylistTrackItem[] {
+    return this.listTracksInPlaylist(playlistId)
+  }
+
   createPlaylist(name: string): Playlist[] {
     this.createPlaylistRecord(name)
-    return this.listPlaylists()
+    return this.listPlaylistsMetadata()
   }
 
   createPlaylistRecord(name: string): Playlist {
@@ -553,22 +600,22 @@ export class LibraryRepository {
 
   renamePlaylist(playlistId: string, name: string): Playlist[] {
     if (playlistId === LIKED_SONGS_PLAYLIST_ID || playlistId === OFFLINE_SONGS_PLAYLIST_ID) {
-      return this.listPlaylists()
+      return this.listPlaylistsMetadata()
     }
     this.db
       .update(schema.playlists)
       .set({ name: name.trim(), updatedAt: now() })
       .where(eq(schema.playlists.id, playlistId))
       .run()
-    return this.listPlaylists()
+    return this.listPlaylistsMetadata()
   }
 
   deletePlaylist(playlistId: string): Playlist[] {
     if (playlistId === LIKED_SONGS_PLAYLIST_ID || playlistId === OFFLINE_SONGS_PLAYLIST_ID) {
-      return this.listPlaylists()
+      return this.listPlaylistsMetadata()
     }
     this.db.delete(schema.playlists).where(eq(schema.playlists.id, playlistId)).run()
-    return this.listPlaylists()
+    return this.listPlaylistsMetadata()
   }
 
   addTrackToPlaylist(playlistId: string, trackId: string, sourceUrl: string): Playlist[] {
@@ -660,13 +707,15 @@ export class LibraryRepository {
     const clamped = Math.max(0, Math.min(newIndex, ids.length - 1))
     ids.splice(from, 1)
     ids.splice(clamped, 0, entryId)
-    for (let i = 0; i < ids.length; i++) {
-      this.db
-        .update(schema.playlistTracks)
-        .set({ sortOrder: i })
-        .where(eq(schema.playlistTracks.id, ids[i]))
-        .run()
-    }
+    this.db.transaction(() => {
+      for (let i = 0; i < ids.length; i++) {
+        this.db
+          .update(schema.playlistTracks)
+          .set({ sortOrder: i })
+          .where(eq(schema.playlistTracks.id, ids[i]))
+          .run()
+      }
+    })
     this.db
       .update(schema.playlists)
       .set({ updatedAt: now() })
@@ -752,6 +801,247 @@ export class LibraryRepository {
     return this.listPlaylistTracks(playlistId)
   }
 
+  trackRecommendationImpression(input: {
+    sessionId: string
+    trackId: string
+    position: number
+    shownAt: number
+  }): void {
+    this.db
+      .insert(schema.recommendationImpressions)
+      .values({
+        id: id("reco_imp"),
+        sessionId: input.sessionId,
+        trackId: input.trackId,
+        position: input.position,
+        shownAt: input.shownAt,
+      })
+      .run()
+  }
+
+  trackRecommendationInteraction(input: {
+    sessionId: string
+    trackId: string
+    interactionType: "play" | "skip" | "like" | "save" | "dismiss"
+    interactedAt: number
+    metadataJson?: string | null
+  }): void {
+    this.db
+      .insert(schema.recommendationInteractions)
+      .values({
+        id: id("reco_evt"),
+        sessionId: input.sessionId,
+        trackId: input.trackId,
+        interactionType: input.interactionType,
+        interactedAt: input.interactedAt,
+        metadataJson: input.metadataJson ?? null,
+      })
+      .run()
+  }
+
+  getRecommendationMetrics(windowHours: number): {
+    impressions: number
+    plays: number
+    likes: number
+    saves: number
+    skips: number
+    ctr: number
+    saveRate: number
+    skipRate: number
+  } {
+    const since = now() - Math.max(1, windowHours) * 60 * 60 * 1000
+    const impressionsResult = this.db
+      .select({ value: count() })
+      .from(schema.recommendationImpressions)
+      .where(gt(schema.recommendationImpressions.shownAt, since))
+      .get()
+    const interactionRows = this.db
+      .select({
+        interactionType: schema.recommendationInteractions.interactionType,
+        value: count(),
+      })
+      .from(schema.recommendationInteractions)
+      .where(gt(schema.recommendationInteractions.interactedAt, since))
+      .groupBy(schema.recommendationInteractions.interactionType)
+      .all()
+    const byType = new Map(interactionRows.map((row) => [row.interactionType, row.value]))
+    const impressions = impressionsResult?.value ?? 0
+    const plays = byType.get("play") ?? 0
+    const likes = byType.get("like") ?? 0
+    const saves = byType.get("save") ?? 0
+    const skips = (byType.get("skip") ?? 0) + (byType.get("dismiss") ?? 0)
+    return {
+      impressions,
+      plays,
+      likes,
+      saves,
+      skips,
+      ctr: impressions > 0 ? plays / impressions : 0,
+      saveRate: impressions > 0 ? saves / impressions : 0,
+      skipRate: impressions > 0 ? skips / impressions : 0,
+    }
+  }
+
+  recordPlayStart(trackId: string, sourceUrl: string): string {
+    const rowId = id("ph")
+    const timestamp = now()
+    this.db
+      .insert(schema.playHistory)
+      .values({
+        id: rowId,
+        trackId,
+        sourceUrl,
+        playedAt: timestamp,
+        completed: 0,
+      })
+      .run()
+    return rowId
+  }
+
+  markPlayHistoryCompleted(rowId: string): void {
+    this.db
+      .update(schema.playHistory)
+      .set({ completed: 1 })
+      .where(eq(schema.playHistory.id, rowId))
+      .run()
+  }
+
+  listRecommendationCandidates(limit: number): { track: Track; score: number; reason: string }[] {
+    const parsedLimit = Math.max(1, Math.min(limit, 100))
+    const nowTs = now()
+    const ninetyDaysAgo = nowTs - 90 * 24 * 60 * 60 * 1000
+    const candidateCap = 5000
+
+    // Aggregated listening signals per track (only tracks with play history in the last 90 days,
+    // capped to avoid loading an unbounded number of rows)
+    const rows = this.db
+      .select({
+        ...trackColumns,
+        playCount: sql<number>`coalesce(count(${schema.playHistory.id}), 0)`,
+        completeCount: sql<number>`coalesce(sum(case when ${schema.playHistory.completed} = 1 then 1 else 0 end), 0)`,
+        recentPlayTs: sql<number>`max(${schema.playHistory.playedAt})`,
+      })
+      .from(schema.tracks)
+      .innerJoin(schema.playHistory, eq(schema.playHistory.trackId, schema.tracks.id))
+      .where(gt(schema.playHistory.playedAt, ninetyDaysAgo))
+      .groupBy(schema.tracks.id)
+      .limit(candidateCap)
+      .all()
+
+    // Playlist membership
+    const playlistTrackRows = this.db
+      .select({ trackId: schema.playlistTracks.trackId })
+      .from(schema.playlistTracks)
+      .all()
+    const inUserPlaylists = new Set(playlistTrackRows.map((r) => r.trackId))
+
+    // Recent impressions (7 days) for cross-session dedup
+    const weekAgo = nowTs - 7 * 24 * 60 * 60 * 1000
+    const recentImpressionRows = this.db
+      .select({ trackId: schema.recommendationImpressions.trackId })
+      .from(schema.recommendationImpressions)
+      .where(gt(schema.recommendationImpressions.shownAt, weekAgo))
+      .all()
+    const recentlyShown = new Set(recentImpressionRows.map((r) => r.trackId))
+
+    // Negative interactions (skip / dismiss) in last 14 days
+    const twoWeeksAgo = nowTs - 14 * 24 * 60 * 60 * 1000
+    const negativeTrackIds = this.db
+      .select({ trackId: schema.recommendationInteractions.trackId })
+      .from(schema.recommendationInteractions)
+      .where(
+        and(
+          gt(schema.recommendationInteractions.interactedAt, twoWeeksAgo),
+          eq(schema.recommendationInteractions.interactionType, "skip")
+        )
+      )
+      .all()
+      .map((r) => r.trackId)
+    const dismissedTrackIds = this.db
+      .select({ trackId: schema.recommendationInteractions.trackId })
+      .from(schema.recommendationInteractions)
+      .where(
+        and(
+          gt(schema.recommendationInteractions.interactedAt, twoWeeksAgo),
+          eq(schema.recommendationInteractions.interactionType, "dismiss")
+        )
+      )
+      .all()
+      .map((r) => r.trackId)
+    const recentlyDismissed = new Set([...negativeTrackIds, ...dismissedTrackIds])
+
+    // Compute max playCount for normalization
+    let maxPlayCount = 0
+    for (const row of rows) {
+      const pc = Number(row.playCount ?? 0)
+      if (pc > maxPlayCount) maxPlayCount = pc
+    }
+    if (maxPlayCount < 1) maxPlayCount = 1
+
+    const scored = rows.map((row) => {
+      const track = mapTrack(row)
+      const playCount = Number(row.playCount ?? 0)
+      const completeCount = Number(row.completeCount ?? 0)
+      const recentPlayTs = Number(row.recentPlayTs ?? 0)
+
+      // Normalized signals [0,1]
+      const rawAffinity = playCount + completeCount * 1.5 + (track.likedAt ? 3 : 0)
+      const affinity = Math.min(1, rawAffinity / 10)
+      const novelty = Math.max(0, 1 - playCount / maxPlayCount)
+      const hoursSincePlay = recentPlayTs > 0 ? (nowTs - recentPlayTs) / (1000 * 60 * 60) : Infinity
+      const recency = recentPlayTs > 0 ? Math.exp(-hoursSincePlay / 72) : 0
+
+      // Penalty for recent negative feedback
+      const penalty = recentlyDismissed.has(track.id) ? 0.5 : 0
+
+      const score = affinity * 0.3 + novelty * 0.4 + recency * 0.3 - penalty
+
+      // Honest reason based on dominant signal
+      let reason = "From your library"
+      if (novelty > 0.65 && playCount <= 2) {
+        reason = recentPlayTs > 0 ? "A hidden gem you played once" : "A hidden gem"
+      } else if (recency > affinity && recency > 0.3) {
+        reason = "Recently on repeat"
+      } else if (affinity > 0.4) {
+        reason = track.likedAt ? "A favorite of yours" : "Replayed often"
+      }
+
+      return { track, score, playCount, completeCount, recentPlayTs, reason }
+    })
+
+    // Discovery-first filtering (exclude liked + in-playlist tracks from top priority)
+    const discoveryPool = scored.filter(
+      (entry) => !entry.track.likedAt && !inUserPlaylists.has(entry.track.id)
+    )
+    const secondaryPool = scored.filter(
+      (entry) => !entry.track.likedAt || (entry.track.likedAt && entry.playCount > 0)
+    )
+    const orderedPool = discoveryPool.length >= parsedLimit ? discoveryPool : secondaryPool
+
+    // Apply cross-session dedup
+    const deduped = orderedPool.filter((entry) => {
+      if (recentlyDismissed.has(entry.track.id)) return false
+      if (recentlyShown.has(entry.track.id) && entry.score < 0.55) return false
+      return true
+    })
+
+    deduped.sort((a, b) => b.score - a.score)
+
+    // Build results with artist cap=2 and honest reason mapping
+    const results: { track: Track; score: number; reason: string }[] = []
+    const artistGuard = new Map<string, number>()
+    for (const entry of deduped) {
+      if (results.length >= parsedLimit) break
+      const artistKey = entry.track.artist?.trim().toLowerCase() ?? `artist:${entry.track.id}`
+      const artistCount = artistGuard.get(artistKey) ?? 0
+      if (artistCount >= 2) continue
+      results.push({ track: entry.track, score: entry.score, reason: entry.reason })
+      artistGuard.set(artistKey, artistCount + 1)
+    }
+
+    return results
+  }
+
   private setDownloadState(
     trackId: string,
     input: {
@@ -787,9 +1077,22 @@ export class LibraryRepository {
   }
 
   private getLikedSongsPlaylist(): Playlist {
-    const tracks = this.listLikedTracks()
-    const createdAt = tracks[tracks.length - 1]?.likedAt ?? 0
-    const updatedAt = tracks[0]?.likedAt ?? createdAt
+    const row = this.db
+      .select({
+        totalDurationMs: sql<number>`coalesce(sum(${schema.tracks.durationMs}), 0)`,
+        cnt: count(),
+        oldestLiked: sql<number>`min(${schema.tracks.likedAt})`,
+        newestLiked: sql<number>`max(${schema.tracks.likedAt})`,
+      })
+      .from(schema.tracks)
+      .where(isNotNull(schema.tracks.likedAt))
+      .get()
+
+    const trackCount = Number(row?.cnt ?? 0)
+    const totalDurationMs = Number(row?.totalDurationMs ?? 0)
+    const createdAt = row?.oldestLiked ?? 0
+    const updatedAt = row?.newestLiked ?? createdAt
+
     return {
       id: LIKED_SONGS_PLAYLIST_ID,
       name: "Liked Songs",
@@ -798,17 +1101,34 @@ export class LibraryRepository {
       createdAt,
       updatedAt,
       isSystem: true,
-      totalDurationMs: sumDurationMs(tracks),
-      tracks,
+      totalDurationMs,
+      trackCount,
+      tracks: undefined,
     }
   }
 
   private getOfflineSongsPlaylist(): Playlist {
-    const tracks = this.listDownloadedTracks()
-    const t0 = tracks[0]
-    const tLast = tracks[tracks.length - 1]
-    const createdAt = tLast?.downloadedAt ?? tLast?.updatedAt ?? 0
-    const updatedAt = t0?.downloadedAt ?? t0?.updatedAt ?? createdAt
+    const row = this.db
+      .select({
+        totalDurationMs: sql<number>`coalesce(sum(${schema.tracks.durationMs}), 0)`,
+        cnt: count(),
+        oldestTs: sql<number>`min(coalesce(${schema.tracks.downloadedAt}, ${schema.tracks.updatedAt}))`,
+        newestTs: sql<number>`max(coalesce(${schema.tracks.downloadedAt}, ${schema.tracks.updatedAt}))`,
+      })
+      .from(schema.tracks)
+      .where(
+        and(
+          eq(schema.tracks.downloadStatus, "downloaded"),
+          sql`coalesce(trim(${schema.tracks.downloadedFilePath}), '') != ''`
+        )
+      )
+      .get()
+
+    const trackCount = Number(row?.cnt ?? 0)
+    const totalDurationMs = Number(row?.totalDurationMs ?? 0)
+    const createdAt = row?.oldestTs ?? 0
+    const updatedAt = row?.newestTs ?? createdAt
+
     return {
       id: OFFLINE_SONGS_PLAYLIST_ID,
       name: "Offline songs",
@@ -817,8 +1137,9 @@ export class LibraryRepository {
       createdAt,
       updatedAt,
       isSystem: true,
-      totalDurationMs: sumDurationMs(tracks),
-      tracks,
+      totalDurationMs,
+      trackCount,
+      tracks: undefined,
     }
   }
 
@@ -829,13 +1150,15 @@ export class LibraryRepository {
       .where(eq(schema.playlistTracks.playlistId, playlistId))
       .orderBy(asc(schema.playlistTracks.sortOrder), asc(schema.playlistTracks.addedAt))
       .all()
-    for (let i = 0; i < rows.length; i++) {
-      this.db
-        .update(schema.playlistTracks)
-        .set({ sortOrder: i })
-        .where(eq(schema.playlistTracks.id, rows[i].id))
-        .run()
-    }
+    this.db.transaction(() => {
+      for (let i = 0; i < rows.length; i++) {
+        this.db
+          .update(schema.playlistTracks)
+          .set({ sortOrder: i })
+          .where(eq(schema.playlistTracks.id, rows[i].id))
+          .run()
+      }
+    })
   }
 
   private listPlaylistTracks(playlistId: string): PlaylistTrackItem[] {
@@ -918,6 +1241,29 @@ export class QueueRepository {
     return this.list()
   }
 
+  addMany(sourceUrls: string[]): QueueItem[] {
+    this.db.transaction(() => {
+      const maxSortOrder = this.db
+        .select({ sortOrder: sql<number>`coalesce(max(${schema.queueItems.sortOrder}), -1)` })
+        .from(schema.queueItems)
+        .get()
+      let nextSortOrder = (maxSortOrder?.sortOrder ?? -1) + 1
+      for (const sourceUrl of sourceUrls) {
+        this.db
+          .insert(schema.queueItems)
+          .values({
+            id: id("q"),
+            sourceUrl,
+            sortOrder: nextSortOrder++,
+            status: "queued",
+            createdAt: now(),
+          })
+          .run()
+      }
+    })
+    return this.list()
+  }
+
   setTrack(queueItemId: string, trackId: string, status: QueueItem["status"]): void {
     this.db
       .update(schema.queueItems)
@@ -976,13 +1322,15 @@ export class QueueRepository {
     const clamped = Math.max(0, Math.min(sortOrder, ids.length - 1))
     ids.splice(from, 1)
     ids.splice(clamped, 0, queueItemId)
-    for (let i = 0; i < ids.length; i++) {
-      this.db
-        .update(schema.queueItems)
-        .set({ sortOrder: i })
-        .where(eq(schema.queueItems.id, ids[i]))
-        .run()
-    }
+    this.db.transaction(() => {
+      for (let i = 0; i < ids.length; i++) {
+        this.db
+          .update(schema.queueItems)
+          .set({ sortOrder: i })
+          .where(eq(schema.queueItems.id, ids[i]))
+          .run()
+      }
+    })
     return this.list()
   }
 
@@ -1009,13 +1357,16 @@ export class QueueRepository {
       ids = shuffle(ids)
     }
 
-    for (let i = 0; i < ids.length; i++) {
-      this.db
-        .update(schema.queueItems)
-        .set({ sortOrder: i })
-        .where(eq(schema.queueItems.id, ids[i]))
-        .run()
-    }
+    const sortedIds = ids
+    this.db.transaction(() => {
+      for (let i = 0; i < sortedIds.length; i++) {
+        this.db
+          .update(schema.queueItems)
+          .set({ sortOrder: i })
+          .where(eq(schema.queueItems.id, sortedIds[i]))
+          .run()
+      }
+    })
     return this.list()
   }
 
@@ -1104,6 +1455,7 @@ export class ResolverCacheRepository {
     }
   ): void {
     const timestamp = now()
+
     this.db
       .insert(schema.resolverCache)
       .values({
@@ -1122,7 +1474,6 @@ export class ResolverCacheRepository {
       .onConflictDoUpdate({
         target: schema.resolverCache.sourceUrl,
         set: {
-          sourceUrl,
           provider: resolved.candidate.provider,
           streamUrl: resolved.streamUrl,
           metadataJson: JSON.stringify(resolved.candidate),
@@ -1135,6 +1486,16 @@ export class ResolverCacheRepository {
       })
       .run()
   }
+  purgeExpired(): number {
+    const nowTs = Date.now()
+    const result = this.db
+      .delete(schema.resolverCache)
+      .where(
+        and(isNotNull(schema.resolverCache.expiresAt), lt(schema.resolverCache.expiresAt, nowTs))
+      )
+      .run()
+    return result.changes
+  }
 }
 
 export type LyricsCacheInput = {
@@ -1146,6 +1507,7 @@ export type LyricsCacheInput = {
   canonicalUrl: string
   provider: Provider
   state: LyricsState
+  expiresAt?: number | null
 }
 
 export class LyricsCacheRepository {
@@ -1158,6 +1520,10 @@ export class LyricsCacheRepository {
       .where(eq(schema.lyricsCache.id, cacheKey))
       .get()
     if (!row) {
+      return null
+    }
+    if (row.expiresAt !== null && Date.now() > row.expiresAt.getTime()) {
+      this.db.delete(schema.lyricsCache).where(eq(schema.lyricsCache.id, cacheKey)).run()
       return null
     }
     const result = mapLyricsCache(row)
@@ -1185,6 +1551,8 @@ export class LyricsCacheRepository {
         : null,
       errorMessage: state.reason,
       fetchedAt: lyrics?.fetchedAt ?? now(),
+      expiresAt: input.expiresAt != null ? new Date(input.expiresAt) : null,
+      updatedAt: new Date(),
     }
     this.db
       .insert(schema.lyricsCache)
@@ -1198,6 +1566,15 @@ export class LyricsCacheRepository {
       })
       .run()
     return state
+  }
+
+  purgeExpired(): number {
+    const nowTs = new Date()
+    const result = this.db
+      .delete(schema.lyricsCache)
+      .where(and(isNotNull(schema.lyricsCache.expiresAt), lt(schema.lyricsCache.expiresAt, nowTs)))
+      .run()
+    return result.changes
   }
 }
 
