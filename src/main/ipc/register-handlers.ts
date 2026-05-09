@@ -38,6 +38,7 @@ type HandlerDeps = {
 
 let cleanupPreviousHandlers: (() => void) | null = null
 let playerEmitCount = 0
+const activePlayHistory = new Map<string, string>()
 
 const nonEmptyString = z.string().trim().min(1)
 const nullableNonEmptyString = z.string().trim().min(1).nullable()
@@ -181,6 +182,8 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       deps.queue.clearPlaying()
       deps.queue.setTrack(item.id, item.track.id, "playing")
       emitQueue()
+      const rowId = deps.library.recordPlayStart(item.track.id, item.sourceUrl)
+      activePlayHistory.set(item.id, rowId)
       const result = await deps.player.play(downloadedPath, item.id, item.track)
       prefetchNextQueueItem(item.id)
       return result
@@ -201,6 +204,8 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
       deps.queue.clearPlaying()
       deps.queue.setTrack(item.id, track.id, "playing")
       emitQueue()
+      const rowId = deps.library.recordPlayStart(track.id, item.sourceUrl)
+      activePlayHistory.set(item.id, rowId)
       const result = await deps.player.play(playbackPath, item.id, track)
       prefetchNextQueueItem(item.id)
       return result
@@ -223,6 +228,11 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
     deps.presence.sync(state)
     if (state.status === "idle" && state.queueItemId) {
       const finishedId = state.queueItemId
+      const playHistoryRowId = activePlayHistory.get(finishedId)
+      if (playHistoryRowId) {
+        deps.library.markPlayHistoryCompleted(playHistoryRowId)
+        activePlayHistory.delete(finishedId)
+      }
       const repeatMode = state.repeatMode ?? "off"
       const list = deps.queue.list()
       const nextId =

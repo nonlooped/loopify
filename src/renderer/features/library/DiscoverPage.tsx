@@ -4,6 +4,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Settings,
   Shuffle,
   Sparkles,
   TrendingUp,
@@ -82,13 +83,38 @@ function classifySections(items: RecommendationItem[]): {
   return { picksForYou, replayFavorites, hiddenGems, trending }
 }
 
+function DiscoverRecommendationsDisabled() {
+  const toggleSettings = useAppStore((s) => s.toggleSettings)
+
+  return (
+    <div className="flex h-full min-h-[50vh] flex-col items-center justify-center px-6 py-16 text-center">
+      <div className="w-full max-w-md rounded-2xl border border-border/50 bg-raised/80 p-8 shadow-lg">
+        <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/15 text-accent">
+          <Sparkles className="h-7 w-7" aria-hidden />
+        </div>
+        <h2 className="type-title text-foreground">Discover is off</h2>
+        <p className="type-body-sm mt-3 text-muted leading-relaxed">
+          Smart recommendations are disabled for this installation (or outside the rollout). Turn
+          them on in Settings to see personalized picks and discovery sections here.
+        </p>
+        <Button type="button" size="md" className="mt-8 gap-2" onClick={() => toggleSettings(true)}>
+          <Settings className="h-4 w-4" aria-hidden />
+          Open Settings
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function DiscoverPage() {
+  const recommendationsEnabled = useAppStore((s) => s.recommendationsEnabled)
   const [data, setData] = useState<HomeRecommendations | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(recommendationsEnabled)
   const [error, setError] = useState<string | null>(null)
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [activeVibe, setActiveVibe] = useState<VibeId>("all")
 
+  const setDiscoverRecommendationContext = useAppStore((s) => s.setDiscoverRecommendationContext)
   const trackRecommendationInteraction = useAppStore((s) => s.trackRecommendationInteraction)
   const refreshRecommendations = useAppStore((s) => s.refreshRecommendations)
   const handlePlayTrack = useAppStore((s) => s.handlePlayTrack)
@@ -97,23 +123,59 @@ export function DiscoverPage() {
 
   const vibeRef = useRef<HTMLDivElement>(null)
   const trendingRef = useRef<HTMLDivElement>(null)
+  const discoverLoadSeq = useRef(0)
 
   const load = useCallback(async () => {
+    const seq = ++discoverLoadSeq.current
     try {
       setLoading(true)
       setError(null)
       const recs = await window.loopify.recommendations.getHome(36)
+      if (seq !== discoverLoadSeq.current) return
       setData(recs)
+      setDiscoverRecommendationContext(
+        recs.sessionId,
+        recs.items.map((item) => item.track.id)
+      )
+      Promise.allSettled(
+        recs.items.map((item, i) =>
+          window.loopify.recommendations.trackImpression({
+            sessionId: recs.sessionId,
+            trackId: item.track.id,
+            position: i,
+          })
+        )
+      ).catch(() => {})
     } catch (err) {
+      if (seq !== discoverLoadSeq.current) return
+      setDiscoverRecommendationContext(null)
       setError(err instanceof Error ? err.message : "Failed to load discover content")
     } finally {
-      setLoading(false)
+      if (seq === discoverLoadSeq.current) {
+        setLoading(false)
+      }
     }
-  }, [])
+  }, [setDiscoverRecommendationContext])
 
   useEffect(() => {
+    return () => {
+      discoverLoadSeq.current += 1
+      setDiscoverRecommendationContext(null)
+    }
+  }, [setDiscoverRecommendationContext])
+
+  useEffect(() => {
+    if (!recommendationsEnabled) {
+      discoverLoadSeq.current += 1
+      setDiscoverRecommendationContext(null)
+      setData(null)
+      setError(null)
+      setDismissedIds(new Set())
+      setLoading(false)
+      return
+    }
     void load()
-  }, [load])
+  }, [recommendationsEnabled, load, setDiscoverRecommendationContext])
 
   const handleDismiss = async (track: Track) => {
     setDismissedIds((prev) => new Set(prev).add(track.id))
@@ -144,6 +206,10 @@ export function DiscoverPage() {
 
   const scrollToTrending = () => {
     trendingRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+
+  if (!recommendationsEnabled) {
+    return <DiscoverRecommendationsDisabled />
   }
 
   if (loading) {
