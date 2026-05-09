@@ -1,4 +1,5 @@
 import { LRUCache } from "lru-cache"
+import { z } from "zod"
 import type {
   AlbumDetails,
   ArtistDiscography,
@@ -38,17 +39,25 @@ function entityKey(type: string, id: number): string {
   return `${type}:${id}`
 }
 
-function pickArtwork(
-  sizes: Record<string, string | undefined | number> | undefined
-): string | null {
+type ArtworkFields = {
+  cover_xl?: string
+  cover_big?: string
+  cover_medium?: string
+}
+
+type PictureFields = {
+  picture_xl?: string
+  picture_big?: string
+  picture_medium?: string
+}
+
+function pickArtwork(sizes: ArtworkFields | undefined): string | null {
   if (!sizes) return null
   const xl = sizes.cover_xl ?? sizes.cover_big ?? sizes.cover_medium
   return typeof xl === "string" ? xl : null
 }
 
-function pickPicture(
-  sizes: Record<string, string | undefined | number> | undefined
-): string | null {
+function pickPicture(sizes: PictureFields | undefined): string | null {
   if (!sizes) return null
   const xl = sizes.picture_xl ?? sizes.picture_big ?? sizes.picture_medium
   return typeof xl === "string" ? xl : null
@@ -69,6 +78,72 @@ type DeezerTrackResponse = {
     cover_medium?: string
   }
 }
+
+const deezerArtistSchema = z
+  .object({
+    id: z.number(),
+    name: z.string(),
+    picture_xl: z.string().optional(),
+    picture_big: z.string().optional(),
+    picture_medium: z.string().optional(),
+    picture_small: z.string().optional(),
+  })
+  .passthrough()
+
+const deezerContributorSchema = z
+  .object({
+    id: z.number(),
+    name: z.string(),
+    role: z.string(),
+  })
+  .passthrough()
+
+const deezerAlbumSummarySchema = z
+  .object({
+    id: z.number(),
+    title: z.string(),
+    cover_xl: z.string().optional(),
+    cover_big: z.string().optional(),
+    cover_medium: z.string().optional(),
+  })
+  .passthrough()
+
+const deezerTrackSchema = z
+  .object({
+    id: z.number(),
+    title: z.string(),
+    duration: z.number(),
+    isrc: z.string().optional(),
+    artist: deezerArtistSchema.optional(),
+    contributors: z.array(deezerContributorSchema).optional(),
+    album: deezerAlbumSummarySchema.optional(),
+  })
+  .passthrough()
+
+const deezerAlbumSchema = z
+  .object({
+    id: z.number(),
+    title: z.string(),
+    artist: deezerArtistSchema.optional(),
+    cover_xl: z.string().optional(),
+    cover_big: z.string().optional(),
+    cover_medium: z.string().optional(),
+    nb_tracks: z.number().optional(),
+    record_type: z.string().optional(),
+    release_date: z.string().optional(),
+    tracks: z.object({ data: z.array(deezerTrackSchema) }).optional(),
+  })
+  .passthrough()
+
+const deezerTrackListSchema = z
+  .object({ data: z.array(deezerTrackSchema).optional() })
+  .passthrough()
+const deezerArtistListSchema = z
+  .object({ data: z.array(deezerArtistSchema).optional() })
+  .passthrough()
+const deezerAlbumListSchema = z
+  .object({ data: z.array(deezerAlbumSchema).optional() })
+  .passthrough()
 
 type DeezerArtistResponse = {
   id: number
@@ -92,6 +167,14 @@ type DeezerAlbumResponse = {
   tracks?: { data: DeezerTrackResponse[] }
 }
 
+function parseDeezerResponse<T>(schema: z.ZodType<T>, value: unknown): T {
+  const result = schema.safeParse(value)
+  if (!result.success) {
+    throw new Error("Deezer API returned an unexpected response.")
+  }
+  return result.data
+}
+
 function mapTrack(r: DeezerTrackResponse): CatalogTrack {
   const mainArtistId = r.artist?.id
   const features: string[] = []
@@ -111,9 +194,7 @@ function mapTrack(r: DeezerTrackResponse): CatalogTrack {
     features,
     album: r.album?.title ?? null,
     albumDeezerId: r.album?.id,
-    artworkUrl: pickArtwork(
-      r.album as unknown as Record<string, string | undefined | number> | undefined
-    ),
+    artworkUrl: pickArtwork(r.album),
     durationMs: (r.duration ?? 0) * 1000,
     isrc: r.isrc ?? null,
   }
@@ -123,7 +204,7 @@ function mapArtist(r: DeezerArtistResponse): CatalogArtist {
   return {
     deezerId: r.id,
     name: r.name,
-    pictureUrl: pickPicture(r as unknown as Record<string, string | undefined | number>),
+    pictureUrl: pickPicture(r),
   }
 }
 
@@ -132,7 +213,7 @@ function mapAlbum(r: DeezerAlbumResponse): CatalogAlbum {
     deezerId: r.id,
     title: r.title,
     artistName: r.artist?.name ?? "",
-    coverUrl: pickArtwork(r as unknown as Record<string, string | undefined | number>),
+    coverUrl: pickArtwork(r),
     trackCount: r.nb_tracks ?? 0,
     albumType: r.record_type ?? "album",
   }
@@ -172,23 +253,28 @@ export class DeezerService {
   }
 
   async searchTracks(query: string): Promise<CatalogTrack[]> {
-    const data = (await fetchDeezer(
-      `/search/track?q=${encodeURIComponent(query)}&limit=${SEARCH_TRACK_LIMIT}`
-    )) as { data?: DeezerTrackResponse[] }
+    const data = parseDeezerResponse(
+      deezerTrackListSchema,
+      await fetchDeezer(`/search/track?q=${encodeURIComponent(query)}&limit=${SEARCH_TRACK_LIMIT}`)
+    )
     return (data.data ?? []).filter((r) => r.id && r.title && r.artist?.name).map(mapTrack)
   }
 
   async searchArtists(query: string): Promise<CatalogArtist[]> {
-    const data = (await fetchDeezer(
-      `/search/artist?q=${encodeURIComponent(query)}&limit=${SEARCH_ARTIST_LIMIT}`
-    )) as { data?: DeezerArtistResponse[] }
+    const data = parseDeezerResponse(
+      deezerArtistListSchema,
+      await fetchDeezer(
+        `/search/artist?q=${encodeURIComponent(query)}&limit=${SEARCH_ARTIST_LIMIT}`
+      )
+    )
     return (data.data ?? []).filter((r) => r.id && r.name).map(mapArtist)
   }
 
   async searchAlbums(query: string): Promise<CatalogAlbum[]> {
-    const data = (await fetchDeezer(
-      `/search/album?q=${encodeURIComponent(query)}&limit=${SEARCH_ALBUM_LIMIT}`
-    )) as { data?: DeezerAlbumResponse[] }
+    const data = parseDeezerResponse(
+      deezerAlbumListSchema,
+      await fetchDeezer(`/search/album?q=${encodeURIComponent(query)}&limit=${SEARCH_ALBUM_LIMIT}`)
+    )
     return (data.data ?? []).filter((r) => r.id && r.title).map(mapAlbum)
   }
 
@@ -198,13 +284,15 @@ export class DeezerService {
     if (cached) return cached
 
     const [artistData, topTracksData, albumsData] = await Promise.all([
-      fetchDeezer(`/artist/${deezerId}`) as Promise<DeezerArtistResponse>,
-      fetchDeezer(`/artist/${deezerId}/top?limit=${ARTIST_TOP_TRACKS_LIMIT}`) as Promise<{
-        data: DeezerTrackResponse[]
-      }>,
-      fetchDeezer(`/artist/${deezerId}/albums?limit=${ARTIST_ALBUMS_LIMIT}`) as Promise<{
-        data: DeezerAlbumResponse[]
-      }>,
+      fetchDeezer(`/artist/${deezerId}`).then((data) =>
+        parseDeezerResponse(deezerArtistSchema, data)
+      ),
+      fetchDeezer(`/artist/${deezerId}/top?limit=${ARTIST_TOP_TRACKS_LIMIT}`).then((data) =>
+        parseDeezerResponse(deezerTrackListSchema, data)
+      ),
+      fetchDeezer(`/artist/${deezerId}/albums?limit=${ARTIST_ALBUMS_LIMIT}`).then((data) =>
+        parseDeezerResponse(deezerAlbumListSchema, data)
+      ),
     ])
 
     const artist = mapArtist(artistData)
@@ -225,7 +313,10 @@ export class DeezerService {
     const cached = entityCache.get(cacheKey) as AlbumDetails | undefined
     if (cached) return cached
 
-    const albumData = (await fetchDeezer(`/album/${deezerId}`)) as DeezerAlbumResponse
+    const albumData = parseDeezerResponse(
+      deezerAlbumSchema,
+      await fetchDeezer(`/album/${deezerId}`)
+    )
 
     const album = mapAlbum(albumData)
     const tracks = (albumData.tracks?.data ?? []).map(mapTrack)
