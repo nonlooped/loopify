@@ -1,5 +1,6 @@
+import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react"
 import { Check, ChevronRight } from "lucide-react"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useOverlayPresence } from "@/hooks/useOverlayPresence"
 import { cn } from "@/lib/cn"
@@ -22,21 +23,40 @@ export function ContextMenuRenderer() {
   const { shouldRender, showOverlay, onBackdropTransitionEnd } = useOverlayPresence(isOpen)
 
   /* Position --------------------------------------------------------------- */
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
+  const cursorReference = useMemo(
+    () => ({
+      getBoundingClientRect: () =>
+        ({
+          x,
+          y,
+          top: y,
+          right: x,
+          bottom: y,
+          left: x,
+          width: 0,
+          height: 0,
+          toJSON: () => null,
+        }) as DOMRect,
+    }),
+    [x, y]
+  )
 
-  useLayoutEffect(() => {
-    if (!shouldRender || !menuRef.current) return
-    const rect = menuRef.current.getBoundingClientRect()
-    const pad = 4
-    let nx = x
-    let ny = y
-    if (nx + rect.width > window.innerWidth - pad)
-      nx = Math.max(pad, window.innerWidth - rect.width - pad)
-    if (ny + rect.height > window.innerHeight - pad)
-      ny = Math.max(pad, window.innerHeight - rect.height - pad)
-    setMenuPos({ x: nx, y: ny })
-  }, [shouldRender, x, y])
+  const {
+    refs: menuRefs,
+    floatingStyles: menuFloatingStyles,
+    update: updateMenuPosition,
+  } = useFloating({
+    open: shouldRender,
+    placement: "right-start",
+    whileElementsMounted: autoUpdate,
+    middleware: [offset(0), flip({ padding: 4 }), shift({ padding: 4 })],
+  })
+
+  useEffect(() => {
+    if (!shouldRender) return
+    menuRefs.setPositionReference(cursorReference)
+    updateMenuPosition()
+  }, [cursorReference, menuRefs, shouldRender, updateMenuPosition])
 
   /* Keyboard focus --------------------------------------------------------- */
   const [focusedIndex, setFocusedIndex] = useState(-1)
@@ -66,9 +86,26 @@ export function ContextMenuRenderer() {
 
   /* Submenu --------------------------------------------------------------- */
   const [activeSubmenuIndex, setActiveSubmenuIndex] = useState<number | null>(null)
-  const [submenuTriggerRect, setSubmenuTriggerRect] = useState<DOMRect | null>(null)
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const {
+    refs: submenuRefs,
+    floatingStyles: submenuFloatingStyles,
+    update: updateSubmenuPosition,
+  } = useFloating({
+    open: activeSubmenuIndex != null,
+    placement: "right-start",
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(2),
+      flip({
+        padding: 4,
+        fallbackPlacements: ["left-start"],
+      }),
+      shift({ padding: 4 }),
+    ],
+  })
 
   /* Submenu keyboard focus */
   const [subFocusedIndex, setSubFocusedIndex] = useState(-1)
@@ -133,7 +170,6 @@ export function ContextMenuRenderer() {
     if (!isOpen) {
       clearTimers()
       setActiveSubmenuIndex(null)
-      setSubmenuTriggerRect(null)
       setSubFocusedIndex(-1)
       setSubmenuShow(false)
     }
@@ -145,15 +181,14 @@ export function ContextMenuRenderer() {
       clearTimers()
       if (activeSubmenuIndex === index) return
       setActiveSubmenuIndex(null)
-      setSubmenuTriggerRect(null)
       openTimer.current = setTimeout(() => {
+        submenuRefs.setReference(el)
         setActiveSubmenuIndex(index)
-        setSubmenuTriggerRect(el.getBoundingClientRect())
         setSubFocusedIndex(-1)
         openTimer.current = null
       }, SUBMENU_OPEN_DELAY)
     },
-    [activeSubmenuIndex, clearTimers]
+    [activeSubmenuIndex, clearTimers, submenuRefs]
   )
 
   const scheduleSubmenuClose = useCallback(() => {
@@ -163,7 +198,6 @@ export function ContextMenuRenderer() {
     }
     closeTimer.current = setTimeout(() => {
       setActiveSubmenuIndex(null)
-      setSubmenuTriggerRect(null)
       setSubFocusedIndex(-1)
       setSubmenuShow(false)
       closeTimer.current = null
@@ -177,18 +211,9 @@ export function ContextMenuRenderer() {
     }
   }, [])
 
-  /* Submenu position */
-  const submenuPos = useMemo(() => {
-    if (!submenuTriggerRect) return { x: 0, y: 0 }
-    const estimatedWidth = 200
-    if (submenuTriggerRect.right + estimatedWidth + 2 > window.innerWidth) {
-      return {
-        x: Math.max(4, submenuTriggerRect.left - estimatedWidth - 2),
-        y: submenuTriggerRect.top,
-      }
-    }
-    return { x: submenuTriggerRect.right + 2, y: submenuTriggerRect.top }
-  }, [submenuTriggerRect])
+  useEffect(() => {
+    if (activeSubmenuItem) updateSubmenuPosition()
+  }, [activeSubmenuItem, updateSubmenuPosition])
 
   /* Submenu keyboard */
   const handleSubmenuKeyDown = useCallback(
@@ -219,7 +244,6 @@ export function ContextMenuRenderer() {
         e.preventDefault()
         e.stopPropagation()
         setActiveSubmenuIndex(null)
-        setSubmenuTriggerRect(null)
         setSubFocusedIndex(-1)
         setSubmenuShow(false)
         // Return focus to parent trigger
@@ -291,11 +315,11 @@ export function ContextMenuRenderer() {
 
       {/* Main menu panel */}
       <div
-        ref={menuRef}
+        ref={menuRefs.setFloating}
         role="menu"
         aria-label="Context menu"
         tabIndex={-1}
-        style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}
+        style={menuFloatingStyles}
         className={cn(
           "ol-context-menu z-[110] min-w-[192px] max-w-[320px] rounded-xl border border-border bg-surface/95 py-1 shadow-panel backdrop-blur-2xl",
           showOverlay ? "ol-open" : ""
@@ -325,7 +349,6 @@ export function ContextMenuRenderer() {
                 else {
                   clearTimers()
                   setActiveSubmenuIndex(null)
-                  setSubmenuTriggerRect(null)
                 }
               }}
               onSubmenuLeave={scheduleSubmenuClose}
@@ -341,10 +364,11 @@ export function ContextMenuRenderer() {
       {/* Submenu panel */}
       {activeSubmenuItem && (
         <div
+          ref={submenuRefs.setFloating}
           role="menu"
           aria-label={`${activeSubmenuItem.label} submenu`}
           tabIndex={-1}
-          style={{ position: "fixed", left: submenuPos.x, top: submenuPos.y }}
+          style={submenuFloatingStyles}
           className={cn(
             "ol-context-menu z-[111] min-w-[192px] max-w-[280px] rounded-xl border border-border bg-surface/95 py-1 shadow-panel backdrop-blur-2xl",
             submenuShow ? "ol-open" : ""
