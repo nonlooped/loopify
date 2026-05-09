@@ -109,13 +109,24 @@ Source resolver for fetching stream URLs and metadata. Loopify resolves `yt-dlp`
 
 ## Project Structure
 
-| Path               | Role                                                         |
-| ------------------ | ------------------------------------------------------------ |
-| `src/main`         | Electron main process, SQLite, mpv control, resolver jobs  |
-| `src/preload`      | Typed API bridge via `contextBridge`                        |
-| `src/renderer`     | React + Vite UI                                             |
-| `src/shared`       | IPC contracts and shared music types                        |
-| `src/main/db`      | Drizzle ORM schema, repositories, SQLite migrations, setup |
+| Path                    | Role                                                         |
+| --------------------- | ------------------------------------------------------------ |
+| `src/main`            | Electron main process, SQLite, mpv control, resolver jobs  |
+| `src/main/db`         | Drizzle ORM schema, repositories, SQLite migrations, setup |
+| `src/main/player`     | mpv playback control via JSON IPC                          |
+| `src/main/resolver`   | Stream URL resolution with yt-dlp                        |
+| `src/main/library`    | Import services, playlist sources, download handling     |
+| `src/main/lyrics`     | Synchronized lyrics fetching and parsing                 |
+| `src/main/recommendations` | Music recommendation engine                           |
+| `src/main/catalog`    | Music catalog services (e.g., Deezer)                    |
+| `src/main/presence`   | Discord Rich Presence integration                        |
+| `src/main/updater`    | Auto-update handling                                     |
+| `src/preload`         | Typed API bridge via `contextBridge`                     |
+| `src/renderer`        | React + Vite UI                                          |
+| `src/renderer/src/shell` | App shell, navigation, settings, modals                 |
+| `src/renderer/src/player` | Player controls, queue, lyrics display                |
+| `src/renderer/src/library` | Library pages, discover, playlists, albums, artists     |
+| `src/shared`          | IPC contracts and shared music types                       |
 
 ---
 
@@ -126,16 +137,22 @@ Source resolver for fetching stream URLs and metadata. Loopify resolves `yt-dlp`
 | `pnpm run dev`        | Start with hot reload                    |
 | `pnpm run build`      | Build all bundles                        |
 | `pnpm run preview`    | Preview production build                 |
+| `pnpm run postinstall`| Rebuild native modules (auto-run)       |
 | `pnpm run typecheck`  | Type-check without emitting              |
 | `pnpm run lint`       | Lint with Biome                          |
 | `pnpm run lint:fix`   | Auto-fix Biome issues                    |
 | `pnpm run format`     | Format code with Biome                   |
 | `pnpm run smoke:win`  | Windows dir build without code signing   |
-| `pnpm run db:generate`| Generate Drizzle migrations              |
-| `pnpm run db:migrate` | Apply pending migrations                 |
+| `pnpm run db:generate` | Generate Drizzle migrations              |
+| `pnpm run db:migrate`  | Apply pending migrations                 |
+| `pnpm run db:verify`   | Verify Drizzle migrations                |
+| `pnpm run verify:mpv`  | Verify mpv binary setup                  |
+| `pnpm run prepare:binaries` | Bundle external binaries          |
 | `pnpm run dist:win`   | Build Windows NSIS installer             |
 | `pnpm run dist:mac`   | Build macOS dmg+zip                      |
-| `pnpm run dist:linux` | Build Linux AppImage/tar.gz              |
+| `pnpm run dist:linux`   | Build Linux AppImage/tar.gz              |
+| `pnpm run dist:win:dir` | Build Windows dir (no installer)         |
+| `pnpm run dist:linux:dir` | Build Linux dir (no installer)         |
 
 If native packages were installed with lifecycle scripts disabled, rebuild them:
 
