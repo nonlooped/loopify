@@ -1,7 +1,5 @@
 import type { ImportSourceKind } from "../../shared/types/music"
 
-export const DEFAULT_IMPORT_MAX = 100
-
 export type DetectedImportSource = {
   kind: ImportSourceKind
   /** Normalized share URL for the extractor. */

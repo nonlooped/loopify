@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { app, BrowserWindow, Menu } from "electron"
 import log from "electron-log/main.js"
 import { ipcChannels } from "../shared/contracts/ipc"
+import { DeezerService } from "./catalog/deezer-service"
 import { createDatabase, createDrizzleDatabase, type DatabaseConnection } from "./db/database"
 import {
   ImportRepository,
@@ -102,7 +103,8 @@ async function createWindow(): Promise<void> {
   queueRepository = queue
   const resolverCache = new ResolverCacheRepository(drizzleDb)
   resolverCache.purgeExpired()
-  const resolver = new ResolverService(settings, resolverCache)
+  const deezer = new DeezerService()
+  const resolver = new ResolverService(settings, resolverCache, deezer)
   const lyricsCache = new LyricsCacheRepository(drizzleDb)
   lyricsCache.purgeExpired()
   const lyrics = new LyricsService(lyricsCache)
@@ -116,6 +118,7 @@ async function createWindow(): Promise<void> {
     new ImportRepository(drizzleDb),
     library,
     resolver,
+    deezer,
     settings,
     (job) => {
       try {
@@ -137,13 +140,6 @@ async function createWindow(): Promise<void> {
       )
       try {
         window.webContents.send(ipcChannels.downloadsChanged, track)
-      } catch {
-        /* closed window */
-      }
-    },
-    onProgressChanged: (patch) => {
-      try {
-        window.webContents.send(ipcChannels.downloadsProgressChanged, patch)
       } catch {
         /* closed window */
       }

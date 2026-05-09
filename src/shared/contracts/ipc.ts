@@ -22,7 +22,6 @@ import type {
 
 export type SearchQuery = {
   text: string
-  providers?: string[]
 }
 
 export type QueueAddInput = {
@@ -83,13 +82,6 @@ export type RecommendationMetrics = {
   ctr: number
   saveRate: number
   skipRate: number
-}
-
-export type DownloadProgressPatch = {
-  trackId: string
-  downloadStatus: string
-  downloadProgress: number
-  downloadError: string | null
 }
 
 export type LoopifyApi = {
@@ -161,7 +153,6 @@ export type LoopifyApi = {
     downloadPlaylist: (playlistId: string) => Promise<Playlist[]>
     removeTrackDownload: (trackId: string) => Promise<Track>
     onChange: (listener: (track: Track) => void) => () => void
-    onProgressChange: (listener: (patch: DownloadProgressPatch) => void) => () => void
   }
   imports: {
     start: (input: ImportStartInput) => Promise<ImportJob>
@@ -245,7 +236,6 @@ export const ipcChannels = {
   tracksSetLiked: "tracks:set-liked",
   tracksSetCandidateLiked: "tracks:set-candidate-liked",
   downloadsChanged: "downloads:changed",
-  downloadsProgressChanged: "downloads:progress-changed",
   downloadsDownloadTrack: "downloads:download-track",
   downloadsDownloadCandidate: "downloads:download-candidate",
   downloadsDownloadPlaylist: "downloads:download-playlist",

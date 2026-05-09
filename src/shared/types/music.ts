@@ -131,7 +131,7 @@ export type Playlist = {
   tracks?: PlaylistTrackItem[]
 }
 
-export type ImportPhase = "queued" | "fetching" | "matching" | "saving" | "done" | "failed"
+type ImportPhase = "queued" | "fetching" | "matching" | "saving" | "done" | "failed"
 
 export type ImportSourceKind = "youtube" | "spotify" | "other"
 
@@ -200,14 +200,14 @@ export type SyncedLyricLine = {
   text: string
 }
 
-export type TrackLyrics = {
+type TrackLyrics = {
   source: "lrclib" | "cache"
   providerTrackId: string | null
   fetchedAt: number
   lines: SyncedLyricLine[]
 }
 
-export type StaticTrackLyrics = {
+type StaticTrackLyrics = {
   source: "lrclib" | "cache"
   providerTrackId: string | null
   fetchedAt: number

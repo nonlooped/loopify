@@ -1,5 +1,11 @@
 import type { CatalogTrack } from "../../shared/types/music"
-import { normalize, tokenList, tokenOverlapScore, tokenSet } from "../../shared/utils/string"
+import {
+  durationSimilarity,
+  normalize,
+  tokenList,
+  tokenOverlapScore,
+  tokenSet,
+} from "../../shared/utils/string"
 
 export type MatcherEntry = {
   id?: string
@@ -12,12 +18,12 @@ export type MatcherEntry = {
   url?: string
 }
 
-export type ScoredEntry = {
+type ScoredEntry = {
   entry: MatcherEntry
   score: number
 }
 
-export const MATCH_THRESHOLD = 0.55
+const MATCH_THRESHOLD = 0.55
 
 const NOISE_TERMS: Array<{ pattern: RegExp; penalty: number; suppressIfTitleHas?: RegExp }> = [
   { pattern: /\blive\b|\bconcert\b|\blive at\b/i, penalty: 0.4, suppressIfTitleHas: /\blive\b/i },
@@ -62,7 +68,7 @@ export function pickBestMatch(entries: MatcherEntry[], catalog: CatalogTrack): S
   return scored[0]
 }
 
-export function scoreEntry(entry: MatcherEntry, catalog: CatalogTrack): number {
+function scoreEntry(entry: MatcherEntry, catalog: CatalogTrack): number {
   const duration = 0.45 * durationScore(entry, catalog)
   const channel = 0.3 * channelScore(entry, catalog)
   const title = 0.15 * titleScore(entry, catalog)
@@ -77,12 +83,10 @@ function durationDeltaMs(entry: MatcherEntry, catalog: CatalogTrack): number {
 }
 
 function durationScore(entry: MatcherEntry, catalog: CatalogTrack): number {
-  const delta = durationDeltaMs(entry, catalog)
-  if (delta <= 1500) return 1.0
-  if (delta <= 3000) return 0.85
-  if (delta <= 6000) return 0.55
-  if (delta <= 12000) return 0.2
-  return 0
+  if (typeof entry.duration !== "number") return 0
+  const expectedSec = catalog.durationMs / 1000
+  const actualSec = entry.duration
+  return durationSimilarity(expectedSec, actualSec)
 }
 
 function channelScore(entry: MatcherEntry, catalog: CatalogTrack): number {

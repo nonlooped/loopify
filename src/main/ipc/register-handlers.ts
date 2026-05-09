@@ -280,12 +280,7 @@ export function registerIpcHandlers(deps: HandlerDeps): void {
   ipcHandle(ipcChannels.playerPlay, (_event, queueItemId) => playQueueItem(queueItemId))
 
   ipcHandle(ipcChannels.searchQuery, (_event, input) => {
-    const parsed = z
-      .object({ text: nonEmptyString, providers: z.array(z.string()).optional() })
-      .parse(input)
-    if (parsed.providers && parsed.providers.length > 0 && !parsed.providers.includes("deezer")) {
-      return []
-    }
+    const parsed = z.object({ text: nonEmptyString }).parse(input)
     return deps.resolver.search(parsed.text)
   })
   ipcHandle(ipcChannels.searchQueryTracks, (_event, q) =>

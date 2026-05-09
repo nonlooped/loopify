@@ -3,13 +3,11 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { basename, join } from "node:path"
 import { app } from "electron"
 import pLimit from "p-limit"
-import type { DownloadProgressPatch } from "../../shared/contracts/ipc"
 import type { Playlist, Track, TrackCandidate } from "../../shared/types/music"
 import type { LibraryRepository, SettingsRepository } from "../db/repositories"
 
 type DownloadEvents = {
   onTrackChanged: (track: Track) => void
-  onProgressChanged: (patch: DownloadProgressPatch) => void
 }
 
 const MAX_CONCURRENT_DOWNLOADS = 3

@@ -23,26 +23,6 @@ export const albums = sqliteTable("albums", {
   updatedAt: integer("updated_at").notNull(),
 })
 
-export const albumTracks = sqliteTable(
-  "album_tracks",
-  {
-    id: text("id").primaryKey(),
-    albumId: text("album_id")
-      .notNull()
-      .references(() => albums.id, { onDelete: "cascade" }),
-    trackId: text("track_id")
-      .notNull()
-      .references(() => tracks.id, { onDelete: "cascade" }),
-    discNumber: integer("disc_number"),
-    trackNumber: integer("track_number"),
-    createdAt: integer("created_at").notNull(),
-  },
-  (table) => [
-    index("idx_album_tracks_album").on(table.albumId),
-    index("idx_album_tracks_track").on(table.trackId),
-  ]
-)
-
 export const tracks = sqliteTable(
   "tracks",
   {
@@ -186,24 +166,6 @@ export const imports = sqliteTable(
   (table) => [
     index("idx_imports_status").on(table.status),
     index("idx_imports_created").on(table.createdAt),
-  ]
-)
-
-export const importItems = sqliteTable(
-  "import_items",
-  {
-    id: text("id").primaryKey(),
-    importId: text("import_id")
-      .notNull()
-      .references(() => imports.id, { onDelete: "cascade" }),
-    sourceUrl: text("source_url").notNull(),
-    trackId: text("track_id").references(() => tracks.id, { onDelete: "set null" }),
-    status: text("status").notNull(),
-    error: text("error"),
-  },
-  (table) => [
-    index("idx_import_items_import").on(table.importId),
-    index("idx_import_items_track").on(table.trackId),
   ]
 )
 

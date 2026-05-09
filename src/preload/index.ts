@@ -1,10 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
-import {
-  type DownloadProgressPatch,
-  ipcChannels,
-  type LoopifyApi,
-  type UpdateStatus,
-} from "../shared/contracts/ipc"
+import { ipcChannels, type LoopifyApi, type UpdateStatus } from "../shared/contracts/ipc"
 import type {
   ImportJob,
   PlayerPosition,
@@ -109,12 +104,6 @@ const api: LoopifyApi = {
       const wrapped = (_event: Electron.IpcRendererEvent, track: Track): void => listener(track)
       ipcRenderer.on(ipcChannels.downloadsChanged, wrapped)
       return () => ipcRenderer.off(ipcChannels.downloadsChanged, wrapped)
-    },
-    onProgressChange: (listener) => {
-      const wrapped = (_event: Electron.IpcRendererEvent, patch: DownloadProgressPatch): void =>
-        listener(patch)
-      ipcRenderer.on(ipcChannels.downloadsProgressChanged, wrapped)
-      return () => ipcRenderer.off(ipcChannels.downloadsProgressChanged, wrapped)
     },
   },
   imports: {

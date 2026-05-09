@@ -67,8 +67,6 @@ export function DiscoverSection({
   )
 }
 
-export default DiscoverSection
-
 const DiscoverCard = memo(function DiscoverCard({
   item,
   onPlay,

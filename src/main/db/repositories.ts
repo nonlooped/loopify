@@ -705,14 +705,13 @@ export class LibraryRepository {
       return this.listPlaylists()
     }
     const clamped = Math.max(0, Math.min(newIndex, ids.length - 1))
-    ids.splice(from, 1)
-    ids.splice(clamped, 0, entryId)
+    const reordered = reorderItems(ids, from, clamped)
     this.db.transaction(() => {
-      for (let i = 0; i < ids.length; i++) {
+      for (let i = 0; i < reordered.length; i++) {
         this.db
           .update(schema.playlistTracks)
           .set({ sortOrder: i })
-          .where(eq(schema.playlistTracks.id, ids[i]))
+          .where(eq(schema.playlistTracks.id, reordered[i]))
           .run()
       }
     })
@@ -1320,14 +1319,13 @@ export class QueueRepository {
       return this.list()
     }
     const clamped = Math.max(0, Math.min(sortOrder, ids.length - 1))
-    ids.splice(from, 1)
-    ids.splice(clamped, 0, queueItemId)
+    const reordered = reorderItems(ids, from, clamped)
     this.db.transaction(() => {
-      for (let i = 0; i < ids.length; i++) {
+      for (let i = 0; i < reordered.length; i++) {
         this.db
           .update(schema.queueItems)
           .set({ sortOrder: i })
-          .where(eq(schema.queueItems.id, ids[i]))
+          .where(eq(schema.queueItems.id, reordered[i]))
           .run()
       }
     })
@@ -1694,4 +1692,11 @@ export class ImportRepository {
 
 function sumDurationMs(tracks: { durationMs: number | null }[]): number {
   return tracks.reduce((total, track) => total + (track.durationMs ?? 0), 0)
+}
+
+function reorderItems<T>(items: T[], from: number, to: number): T[] {
+  const result = [...items]
+  const [moved] = result.splice(from, 1)
+  result.splice(to, 0, moved)
+  return result
 }

@@ -9,37 +9,14 @@ import type {
   Track,
   TrackCandidate,
 } from "../../shared/types/music"
-import type {
-  albums,
-  albumTracks,
-  artists,
-  importItems,
-  imports,
-  lyricsCache,
-  playHistory,
-  playlists,
-  playlistTracks,
-  queueItems,
-  resolverCache,
-  settings,
-  trackSources,
-  tracks,
-} from "./schema"
+import type { albums, artists, imports, lyricsCache, queueItems, tracks } from "./schema"
 
 export type DbArtist = InferSelectModel<typeof artists>
 export type DbAlbum = InferSelectModel<typeof albums>
-export type DbAlbumTrack = InferSelectModel<typeof albumTracks>
 export type DbTrack = InferSelectModel<typeof tracks>
-export type DbTrackSource = InferSelectModel<typeof trackSources>
-export type DbPlaylist = InferSelectModel<typeof playlists>
-export type DbPlaylistTrack = InferSelectModel<typeof playlistTracks>
 export type DbQueueItem = InferSelectModel<typeof queueItems>
 export type DbImport = InferSelectModel<typeof imports>
-export type DbImportItem = InferSelectModel<typeof importItems>
-export type DbPlayHistory = InferSelectModel<typeof playHistory>
 export type DbLyricsCache = InferSelectModel<typeof lyricsCache>
-export type DbSettings = InferSelectModel<typeof settings>
-export type DbResolverCache = InferSelectModel<typeof resolverCache>
 
 export function mapTrack(
   row: Omit<DbTrack, "downloadStatus"> & { downloadStatus?: string | null }

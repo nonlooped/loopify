@@ -1,7 +1,7 @@
 import pLimit from "p-limit"
 import type { TrackCandidate } from "../../shared/types/music"
-import { normalize, tokenList } from "../../shared/utils/string"
-import { DeezerService } from "../catalog/deezer-service"
+import { durationSimilarity, tokenOverlapRatio } from "../../shared/utils/string"
+import type { DeezerService } from "../catalog/deezer-service"
 import { buildScsearchArg, buildYtsearchArg } from "../music/query-builders"
 import type { ResolverService } from "../resolver/resolver-service"
 
@@ -10,7 +10,6 @@ export type SpotifyImportMetadataOptions = {
 }
 
 const SEARCH_TIMEOUT_MS = 8000
-export const DEFAULT_MATCH_SCORE_THRESHOLD = 0.42
 
 export type SpotifyRow = {
   title: string
@@ -30,44 +29,18 @@ function withTimeout<T>(task: Promise<T>, ms: number, message: string): Promise<
   })
 }
 
-function similarity(left: string, right: string): number {
-  const a = normalize(left)
-  const b = normalize(right)
-  if (!a || !b) return 0
-  if (a === b) return 1
-  if (a.includes(b) || b.includes(a)) return 0.9
-  const leftTokens = tokenList(a)
-  const rightTokens = new Set(tokenList(b))
-  if (!leftTokens.length || !rightTokens.size) return 0
-  let n = 0
-  for (const tok of leftTokens) {
-    if (rightTokens.has(tok)) n += 1
-  }
-  return n / Math.max(leftTokens.length, rightTokens.size)
-}
-
-function durationSimilarity(expected: number | undefined, actualSec: number | undefined): number {
-  if (!expected || !actualSec) return 0.6
-  const actualMs = actualSec * 1000
-  const delta = Math.abs(expected - actualMs)
-  if (delta <= 2500) return 1
-  if (delta <= 5000) return 0.9
-  if (delta <= 10_000) return 0.7
-  if (delta <= 15_000) return 0.45
-  if (delta <= 30_000) return 0.2
-  return 0
-}
-
 function trackMatchScore(
   expected: SpotifyRow,
   actual: { title: string; artist: string | null; durationSec?: number }
 ): number {
-  const titleScore = similarity(expected.title, actual.title)
-  const artistScore = expected.artist ? similarity(expected.artist, actual.artist ?? "") : 0.6
-  const d = durationSimilarity(
-    expected.durationMs,
-    typeof actual.durationSec === "number" ? actual.durationSec : undefined
-  )
+  const titleScore = tokenOverlapRatio(expected.title, actual.title)
+  const artistScore = expected.artist
+    ? tokenOverlapRatio(expected.artist, actual.artist ?? "")
+    : 0.6
+  const d =
+    expected.durationMs != null && actual.durationSec != null
+      ? durationSimilarity(expected.durationMs / 1000, actual.durationSec)
+      : 0.6
   return titleScore * 0.7 + artistScore * 0.2 + d * 0.1
 }
 
@@ -84,10 +57,9 @@ async function finalizeSpotifyMatch(
   }
 }
 
-const deezer = new DeezerService()
-
 export async function matchSpotifyRowToCandidate(
   resolver: ResolverService,
+  deezer: DeezerService,
   row: SpotifyRow,
   threshold: number,
   metadata?: SpotifyImportMetadataOptions
@@ -96,7 +68,7 @@ export async function matchSpotifyRowToCandidate(
   if (!q) return null
 
   const ytQ = buildYtsearchArg(q, 1)
-  const catalogPromise = resolveViaDeezer(resolver, row, q, threshold)
+  const catalogPromise = resolveViaDeezer(resolver, deezer, row, q, threshold)
   const ytPromise = withTimeout(
     resolver.getFirstSearchCandidate(ytQ),
     SEARCH_TIMEOUT_MS,
@@ -140,6 +112,7 @@ export async function matchSpotifyRowToCandidate(
 
 async function resolveViaDeezer(
   resolver: ResolverService,
+  deezer: DeezerService,
   row: SpotifyRow,
   query: string,
   threshold: number
@@ -176,6 +149,7 @@ async function resolveViaDeezer(
 
 export async function matchAllSpotifyRows(
   resolver: ResolverService,
+  deezer: DeezerService,
   rows: SpotifyRow[],
   concurrency: number,
   threshold: number,
@@ -190,7 +164,7 @@ export async function matchAllSpotifyRows(
   const limit = pLimit(concurrency)
   const tasks = rows.map((row) =>
     limit(() =>
-      matchSpotifyRowToCandidate(resolver, row, threshold, metadata).then((c) => {
+      matchSpotifyRowToCandidate(resolver, deezer, row, threshold, metadata).then((c) => {
         processed += 1
         if (c) {
           matched += 1
@@ -209,5 +183,3 @@ export async function matchAllSpotifyRows(
   await Promise.all(tasks)
   return out
 }
-
-export { SEARCH_TIMEOUT_MS }
