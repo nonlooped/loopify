@@ -1,6 +1,6 @@
 {
   "name": "loopify-desktop",
-  "version": "0.11.3",
+  "version": "0.12.0",
   "description": "Personal desktop music app for resolving, queueing, and playing online sources.",
   "author": "Loopify",
   "type": "module",
