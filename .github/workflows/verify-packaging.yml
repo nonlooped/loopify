@@ -7,7 +7,6 @@ on:
       - "pnpm-lock.yaml"
       - "electron.vite.config.ts"
       - "src/main/**"
-      - "drizzle/**"
       - "resources/binaries/**"
       - ".github/workflows/**"
   workflow_dispatch:

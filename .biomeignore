@@ -1,4 +1,5 @@
 .agents
+**/src/main/db/migrations/**/snapshot.json
 dist
 out
 node_modules

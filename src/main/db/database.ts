@@ -87,10 +87,10 @@ function getDatabasePaths() {
 
 function getBundledMigrationsDir(): string {
   if (app.isPackaged) {
-    return join(process.resourcesPath, "drizzle", "migrations")
+    return join(process.resourcesPath, "db", "migrations")
   }
 
-  return join(app.getAppPath(), "drizzle", "migrations")
+  return join(app.getAppPath(), "src", "main", "db", "migrations")
 }
 
 function applyPragmas(db: DatabaseConnection): void {

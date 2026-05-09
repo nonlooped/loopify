@@ -83,8 +83,8 @@
     ],
     "extraResources": [
       {
-        "from": "drizzle/migrations/",
-        "to": "drizzle/migrations",
+        "from": "src/main/db/migrations/",
+        "to": "db/migrations",
         "filter": [
           "**/*"
         ]

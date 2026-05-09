@@ -115,8 +115,7 @@ Source resolver for fetching stream URLs and metadata. Loopify resolves `yt-dlp`
 | `src/preload`      | Typed API bridge via `contextBridge`                        |
 | `src/renderer`     | React + Vite UI                                             |
 | `src/shared`       | IPC contracts and shared music types                        |
-| `src/main/db`      | Drizzle ORM schema, repositories, and database setup       |
-| `drizzle/migrations` | SQLite migrations                                            |
+| `src/main/db`      | Drizzle ORM schema, repositories, SQLite migrations, setup |
 
 ---
 
