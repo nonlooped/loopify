@@ -1,0 +1,46 @@
+# Maintainer: UnloopedMido
+pkgname=loopify-bin
+pkgver=0.12.1
+pkgrel=1
+pkgdesc="Personal desktop music app for resolving, queueing, and playing online sources"
+arch=('x86_64')
+url="https://github.com/unloopedmido/loopify"
+license=('MIT')
+depends=(
+  'alsa-lib'
+  'at-spi2-core'
+  'cairo'
+  'dbus'
+  'expat'
+  'fontconfig'
+  'gcc-libs'
+  'glib2'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libdrm'
+  'libx11'
+  'libxcb'
+  'libxcomposite'
+  'libxdamage'
+  'libxext'
+  'libxfixes'
+  'libxkbcommon'
+  'libxrandr'
+  'libxshmfence'
+  'mesa'
+  'nspr'
+  'nss'
+  'pango'
+  'systemd-libs'
+)
+options=('!strip')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/unloopedmido/loopify/releases/download/v$pkgver/Loopify-$pkgver-linux.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  install -dm755 "$pkgdir/usr/lib/$pkgname"
+  cp -a "$srcdir/Loopify-$pkgver-linux/"* "$pkgdir/usr/lib/$pkgname/"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "/usr/lib/$pkgname/loopify-desktop" "$pkgdir/usr/bin/loopify"
+  install -Dm644 "$srcdir/Loopify-$pkgver-linux/LICENSE.electron.txt" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
