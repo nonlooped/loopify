@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs"
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createRequire } from "node:module"
 
@@ -133,13 +133,26 @@ async function bundleMacosMpv() {
   }
 
   console.log("Downloading mpv for macOS...")
-  const url = "https://laboratory.stolendata.it/mpv/mpv-latest.tar.gz"
+  const release = fetchGitHubLatestRelease("mpv-player", "mpv")
+
+  const assetPredicate = (entry) =>
+    entry.name.startsWith("mpv-") &&
+    entry.name.includes("macos") &&
+    entry.name.includes(ARCH === "arm64" ? "arm" : "intel") &&
+    entry.name.endsWith(".zip")
+
+  const asset = pickAsset(release, assetPredicate)
+
   const tempDir = join(process.cwd(), "temp_mpv_mac")
   mkdirSync(tempDir, { recursive: true })
 
-  const tarPath = join(tempDir, "mpv.tar.gz")
-  curlDownload(url, tarPath)
-  spawnSync("tar", ["-xzf", tarPath, "-C", tempDir])
+  const zipPath = join(tempDir, "mpv.zip")
+  curlDownload(asset.browser_download_url, zipPath)
+
+  const unzipResult = spawnSync("unzip", ["-o", zipPath, "-d", tempDir])
+  checkResult(unzipResult, "unzip mpv archive")
+
+  spawnSync("tar", ["-xzf", join(tempDir, "mpv.tar.gz"), "-C", tempDir])
 
   const extractedMpv = join(tempDir, "mpv.app", "Contents", "MacOS", "mpv")
   if (!existsSync(extractedMpv)) {
