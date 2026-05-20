@@ -1,0 +1,35 @@
+name: Publish to AUR
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  publish-aur:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update PKGBUILD version
+        run: |
+          PKGBUILD="packaging/aur/loopify-bin/PKGBUILD"
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.get_version.outputs.version }}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+
+      - name: Deploy to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4
+        with:
+          pkgname: loopify-bin
+          pkgbuild: ./packaging/aur/loopify-bin/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

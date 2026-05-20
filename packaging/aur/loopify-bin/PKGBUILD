@@ -1,6 +1,6 @@
 # Maintainer: UnloopedMido
 pkgname=loopify-bin
-pkgver=0.12.1
+pkgver=0.12.2
 pkgrel=1
 pkgdesc="Personal desktop music app for resolving, queueing, and playing online sources"
 arch=('x86_64')
