@@ -1,6 +1,6 @@
 {
   "name": "loopify-desktop",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Personal desktop music app for resolving, queueing, and playing online sources.",
   "author": "Loopify",
   "license": "MIT",
@@ -8,8 +8,11 @@
   "main": "out/main/app.js",
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "predev": "pnpm run prepare:binaries",
     "dev": "electron-rebuild -f -w better-sqlite3 && electron-vite dev",
+    "prebuild": "pnpm run prepare:binaries",
     "build": "electron-rebuild -f -w better-sqlite3 && electron-vite build",
+    "prepreview": "pnpm run prepare:binaries",
     "dist:win": "pnpm run build && electron-builder --win nsis",
     "dist:mac": "pnpm run build && electron-builder --mac",
     "dist:linux": "pnpm run build && electron-builder --linux",

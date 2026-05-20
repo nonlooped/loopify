@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { Readable } from "node:stream"
 import type { PlayerState, PlayerTrack, RepeatMode, Track } from "../../shared/types/music"
 import type { SettingsRepository } from "../db/repositories"
-import { resolveMpvPath } from "./mpv-binary"
+import { resolveMpvLaunch } from "./mpv-binary"
 
 const STATE_EMIT_THROTTLE_MS = 200
 
@@ -155,12 +155,13 @@ export class PlayerService extends EventEmitter {
     }
 
     const settings = this.settings.get()
-    const mpvPath = resolveMpvPath(settings.mpvPath)
+    const { executable: mpvPath, env: mpvEnv } = resolveMpvLaunch(settings.mpvPath)
     const mpvProcess = spawn(
       mpvPath,
       ["--idle=yes", "--force-window=no", "--terminal=no", `--input-ipc-server=${this.ipcPath}`],
       {
         stdio: ["ignore", "pipe", "pipe"],
+        env: mpvEnv,
       }
     )
     this.process = mpvProcess
