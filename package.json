@@ -71,7 +71,7 @@
     "electron-vite": "6.0.0-beta.1",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
-    "vite": "^8.0.10"
+    "vite": "^8.0.14"
   },
   "build": {
     "appId": "com.loopify.desktop",
