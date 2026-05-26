@@ -4,7 +4,7 @@ pkgver=0.12.2
 pkgrel=1
 pkgdesc="Personal desktop music app for resolving, queueing, and playing online sources"
 arch=('x86_64')
-url="https://github.com/unloopedmido/loopify"
+url="https://github.com/nonlooped/loopify"
 license=('MIT')
 depends=(
   'alsa-lib'
@@ -34,7 +34,7 @@ depends=(
   'systemd-libs'
 )
 options=('!strip')
-source=("$pkgname-$pkgver.tar.gz::https://github.com/unloopedmido/loopify/releases/download/v$pkgver/Loopify-$pkgver-linux.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/nonlooped/loopify/releases/download/v$pkgver/Loopify-$pkgver-linux.tar.gz")
 sha256sums=('SKIP')
 
 package() {

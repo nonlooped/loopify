@@ -14,7 +14,7 @@ import { detectImportSource } from "./playlist-source"
 import { matchAllSpotifyRows, type SpotifyRow } from "./spotify-import-matching"
 
 const SPOTIFY_UA = {
-  "User-Agent": "Loopify/1.0 (desktop; +https://github.com/unloopedmido/loopify)",
+  "User-Agent": "Loopify/1.0 (desktop; +https://github.com/nonlooped/loopify)",
 }
 
 const spotify = (

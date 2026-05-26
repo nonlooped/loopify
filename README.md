@@ -7,13 +7,13 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-326ce5?style=flat-square)](./LICENSE)
 [![Electron](https://img.shields.io/badge/electron-342f4a?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/react-61dafb?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![Windows](https://img.shields.io/badge/Windows-0078d4?style=flat-square&logo=windows&logoColor=white)](https://github.com/unloopedmido/loopify/releases)
-[![macOS](https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white)](https://github.com/unloopedmido/loopify/releases)
-[![Linux](https://img.shields.io/badge/Linux-fcc624?style=flat-square&logo=linux&logoColor=black)](https://github.com/unloopedmido/loopify/releases)
+[![Windows](https://img.shields.io/badge/Windows-0078d4?style=flat-square&logo=windows&logoColor=white)](https://github.com/nonlooped/loopify/releases)
+[![macOS](https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white)](https://github.com/nonlooped/loopify/releases)
+[![Linux](https://img.shields.io/badge/Linux-fcc624?style=flat-square&logo=linux&logoColor=black)](https://github.com/nonlooped/loopify/releases)
 
 <br />
 
-[Documentation](https://github.com/unloopedmido/loopify/wiki) · [Issues](https://github.com/unloopedmido/loopify/issues)
+[Documentation](https://github.com/nonlooped/loopify/wiki) · [Issues](https://github.com/nonlooped/loopify/issues)
 
 </div>
 
@@ -178,7 +178,7 @@ pnpm rebuild electron better-sqlite3
 
 ## Contributing
 
-Open an issue or PR on [GitHub](https://github.com/unloopedmido/loopify). Run `pnpm run lint` and `pnpm run typecheck` before submitting.
+Open an issue or PR on [GitHub](https://github.com/nonlooped/loopify). Run `pnpm run lint` and `pnpm run typecheck` before submitting.
 
 ## License
 
